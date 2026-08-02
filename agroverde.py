@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS Customizada (Mobile-friendly, Contraste & Cartões)
+# Estilização CSS Customizada (Mobile-friendly & Cartões)
 st.markdown("""
     <style>
     div[data-testid="stMarkdownContainer"] p, div[data-testid="stMarkdownContainer"] li {
@@ -72,7 +72,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🌾 Agro Resiliência Climática RS")
-st.subheader("Gêmeo Digital & Inteligência Agroclimática")
 st.caption("Secretaria da Agricultura, Pecuária, Produção Sustentável e Irrigação (SEAPI-RS)")
 st.markdown("---")
 
@@ -86,7 +85,7 @@ def obter_gemini_api_key():
 API_KEY_GEMINI = obter_gemini_api_key()
 
 def analisar_dados_com_gemini(prompt_contexto):
-    """Envia os dados e instruções para o Gemini gerar diagnósticos climáticos."""
+    """Envia os dados e instruções para o Gemini gerar diagnósticos profundos."""
     if not API_KEY_GEMINI:
         return None
     
@@ -95,12 +94,12 @@ def analisar_dados_com_gemini(prompt_contexto):
     payload = {"contents": [{"parts": [{"text": prompt_contexto}]}]}
     
     try:
-        res = requests.post(url, json=payload, headers=headers, timeout=12)
+        res = requests.post(url, json=payload, headers=headers, timeout=15)
         if res.status_code == 200:
             return res.json()['candidates'][0]['content']['parts'][0]['text']
         else:
             url_fb = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY_GEMINI}"
-            res_fb = requests.post(url_fb, json=payload, headers=headers, timeout=12)
+            res_fb = requests.post(url_fb, json=payload, headers=headers, timeout=15)
             if res_fb.status_code == 200:
                 return res_fb.json()['candidates'][0]['content']['parts'][0]['text']
             return None
@@ -180,15 +179,21 @@ municipio_sel = st.sidebar.selectbox(
     index=lista_municipios.index("Osório") if "Osório" in lista_municipios else 0
 )
 
+# Limpa o cache das análises se trocar de município
+if "ultimo_municipio" not in st.session_state or st.session_state["ultimo_municipio"] != municipio_sel:
+    st.session_state["ultimo_municipio"] = municipio_sel
+    st.session_state["parecer_curto"] = None
+    st.session_state["parecer_sazonal"] = None
+
 lat, lon = buscar_coordenadas_municipio(municipio_sel)
 dados_16dias = buscar_clima_avancado(lat, lon)
 bloqueios_reais = buscar_dados_bloqueios_crbm(municipio_sel)
 
 st.sidebar.markdown("---")
 if API_KEY_GEMINI:
-    st.sidebar.success("🤖 Google Gemini (Análise de Risco): **Ativo**")
+    st.sidebar.success("🤖 Google Gemini (IA): **Pronto para Análise**")
 else:
-    st.sidebar.warning("🤖 Google Gemini: **Modo Local** (Configure a chave nos Secrets)")
+    st.sidebar.warning("🤖 Google Gemini: **Modo Local**")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📲 Reportar Ocorrência de Campo")
@@ -200,7 +205,7 @@ if comprovante:
 aba_operacional, aba_crises, aba_sazonal = st.tabs([
     "⚡ 1. Diagnóstico Operacional & Malha Viária",
     "🚨 2. Resposta a Crises & Contingência",
-    "🌋 3. Prognóstico Sazonal & Eventos Extremos"
+    "os 3. Prognóstico Sazonal & Eventos Extremos"
 ])
 
 # =========================================================
@@ -228,25 +233,29 @@ with aba_operacional:
 
     st.subheader(f"🤖 Parecer Técnico Agroclimático — {municipio_sel}")
     
-    prompt_curto_prazo = f"""
-    Você é um Engenheiro Agrônomo especialista da SEAPI-RS.
-    Elabore um parecer operacional direto para o município de {municipio_sel} (RS):
-    - Chuva Acumulada em 7 Dias: {chuva_acum_7:.1f} mm
-    - Pico Térmico: {max_temp:.1f} °C
-    - Vento Máximo: {max_vento:.1f} km/h
-    - Interdições no CRBM: {len(bloqueios_reais)} registro(s).
+    col_btn1, col_info1 = st.columns([1, 2])
+    with col_btn1:
+        if st.button("🧠 Gerar / Atualizar Parecer Técnico (IA)", use_container_width=True):
+            prompt_curto_prazo = f"""
+            Você é um Engenheiro Agrônomo sênior da SEAPI-RS.
+            Elabore um parecer operacional extremamente detalhado e prático para o município de {municipio_sel} (RS):
+            - Chuva Acumulada em 7 Dias: {chuva_acum_7:.1f} mm
+            - Pico Térmico: {max_temp:.1f} °C
+            - Vento Máximo: {max_vento:.1f} km/h
+            - Interdições no CRBM: {len(bloqueios_reais)} registro(s).
 
-    Responda em 3 tópicos objetivos:
-    1. 🌾 **Lavouras & Solo:** Risco de erosão e janela recomendada para defensivos.
-    2. 🐄 **Manejo Pecuário:** Cuidados com estresse térmico e acesso aos tambos de leite.
-    3. 🚜 **Logística & Instalações:** Proteção de feno, sementes e máquinas rurais.
-    """
-    
-    parecer_ia = analisar_dados_com_gemini(prompt_curto_prazo)
-    if parecer_ia:
-        st.info(parecer_ia)
+            Estruture a resposta em 3 seções bem aprofundadas:
+            1. 🌾 **Impacto em Lavouras e Solo:** Janela exata de pulverização, riscos de lixiviação de adubo e drenagem.
+            2. 🐄 **Manejo Pecuário e Leite:** Controle de estresse térmico, sanidade do casco, acesso aos tambos e manejo de barro.
+            3. 🚜 **Logística e Infraestrutura Rural:** Estratégias para tráfego de maquinário pesados e conservação de sacarias/feno.
+            """
+            with st.spinner("Sintetizando parecer com o modelo Gemini..."):
+                st.session_state["parecer_curto"] = analisar_dados_com_gemini(prompt_curto_prazo)
+
+    if st.session_state.get("parecer_curto"):
+        st.info(st.session_state["parecer_curto"])
     else:
-        st.info(f"💡 **Parecer Técnico Operacional ({municipio_sel}):** Acumulado de chuva em 7 dias previsto em {chuva_acum_7:.1f} mm com vento máximo de {max_vento:.1f} km/h. Priorize a drenagem em áreas baixas, eleve sacarias de insumos em pallets e mantenha animais protegidos.")
+        st.caption("👈 Clique no botão acima para acionar a Inteligência Artificial e gerar uma análise detalhada baseada nos dados climáticos atuais.")
 
     st.markdown("---")
 
@@ -369,42 +378,25 @@ with aba_sazonal:
     </div>
     """, unsafe_allow_html=True)
 
-    st.subheader(f"📊 Prognóstico Agroclimático Sazonal — {municipio_sel}")
+    st.subheader(f"📊 Relatório Agrometeorológico Sazonal de Longo Prazo — {municipio_sel}")
     
-    prompt_sazonal = f"""
-    Você é um especialista sênior em Climatologia Agrícola da SEAPI-RS.
-    Elabore um PROGNÓSTICO SAZONAL DE RESILIÊNCIA CLIMÁTICA dinâmico e detalhado para o município de {municipio_sel} (RS) (Lat: {lat}, Lon: {lon}).
+    if st.button("🌋 Gerar Relatório Completo de Resiliência Sazonal (IA)", type="primary", use_container_width=True):
+        prompt_sazonal = f"""
+        Você é um especialista sênior em Climatologia Agrícola e Economia Rural da SEAPI-RS.
+        Elabore um PROGNÓSTICO SAZONAL DE RESILIÊNCIA CLIMÁTICA extremamente abrangente, técnico e detalhado para o município de {municipio_sel} (RS) (Lat: {lat}, Lon: {lon}).
 
-    Considere as projeções de anomalias climáticas extremas no Sul do Brasil (variabilidade do Atlântico Sul, El Niño/La Niña e chuvas de alto volume).
+        Considere o histórico agrícola e geográfico da região, além das tendências de anomalias hídricas e térmicas no Sul do Brasil.
 
-    Estruture o relatório exatamente nestes tópicos:
-    1. 📅 **Projeção Climatológica Trimestral ({municipio_sel}):** Tendência de volumes acumulados, temperatura e episódios de precipitação extrema para os próximos 3 a 6 meses.
-    2. 🌾 **Impactos e Riscos nas Principais Culturas Locais:** Avaliação específica para a vocação agrícola deste município (grãos, pecuária, horticultura ou fruticultura).
-    3. 🛡️ **Estratégias de Resiliência & Contingência:** Ações recomendadas ao produtor para conservação de solo, drenagem, preservação de pastagens e mitigação de estresse térmico/hídrico.
-    """
-    
-    with st.spinner(f"Gerando análise de resiliência sazonal para {municipio_sel}..."):
-        relatorio_sazonal = analisar_dados_com_gemini(prompt_sazonal)
+        Estruture o relatório minunciosamente nestes 3 tópicos:
+        1. 📅 **Projeção Climatológica Trimestral ({municipio_sel}):** Tendências de volumes acumulados, anomalias de temperatura e risco de eventos extremos (enxurradas, estiagens curtas ou granizo) para os próximos 3 a 6 meses.
+        2. 🌾 **Impactos e Riscos nas Culturas Locais:** Avaliação específica para a vocação agrícola predominante deste município (grãos, pecuária de leite/corte, horticultura ou fruticultura).
+        3. 🛡️ **Plano Diretor de Resiliência Rural:** Recomendações táticas para conservação do solo, manejo de irrigação/reserva de água, proteção de pastagens e ações de mitigação financeira/seguro rural.
+        """
+        with st.spinner(f"Processando modelo de inteligência sazonal para {municipio_sel}..."):
+            st.session_state["parecer_sazonal"] = analisar_dados_com_gemini(prompt_sazonal)
+
+    if st.session_state.get("parecer_sazonal"):
+        st.markdown(st.session_state["parecer_sazonal"])
+    else:
+        st.info("💡 **Clique no botão vermelho acima** para gerar a projeção climatológica sazonal estendida da IA para os próximos trimestres.")
         
-        if relatorio_sazonal:
-            st.markdown(relatorio_sazonal)
-        else:
-            # FALLBACK DINÂMICO E COMPLETO PARA GARANTIR QUE A ABA NUNCA FALHE
-            st.markdown(f"""
-            ### 🗓️ Relatório Agroclimático Sazonal de Contingência — **{municipio_sel}**
-
-            #### 1. 📅 Projeção Climatológica Trimestral
-            * **Tendência Hídrica:** Probabilidade de precipitações acumuladas acima da média climatológica histórica para a região de **{municipio_sel}** nos próximos trimestres, impulsionadas pelo aquecimento das águas oceânicas e frentes frias bloqueadas.
-            * **Variabilidade Térmica:** Alternância entre períodos úmidos e picos térmicos pontuais, elevando o índice de umidade relativa do ar.
-
-            #### 2. 🌾 Impactos e Riscos nas Culturas Locais
-            * **Grãos e Grandes Culturas:** Risco de saturação do perfil do solo no período de preparo e plantio, podendo exigir ajuste na janela de semeadura para evitar apodrecimento de sementes.
-            * **Pecuária de Leite e Corte:** Aumento do risco de barro em corredores e praças de alimentação, elevando a susceptibilidade a problemas de casco e estresse térmico em dias abafados.
-            * **Hortifruticultura:** Aumento da pressão de doenças fúngicas e bacterianas devido ao molhamento foliar prolongado.
-
-            #### 3. 🛡️ Plano Estruturado de Resiliência Rural
-            * **Conservação de Solo:** Manutenção e desobstrução de curvas de nível, terraceamento e canais de escoamento para conter a erosão laminar.
-            * **Reserva de Alimentos:** Armazenamento antecipado de volumoso e ração em pallets elevados para evitar perdas em períodos de isolamento logístico.
-            * **Sanidade Preventiva:** Monitoramento constante da lavoura e aplicação preventiva de defensivos biológicos/químicos logo após aberturas na janela de sol.
-            """)
-            
