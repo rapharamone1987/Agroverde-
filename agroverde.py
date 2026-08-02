@@ -77,7 +77,6 @@ st.markdown("---")
 
 # 2. Leitura Direta da Chave nos Secrets
 def obter_gemini_api_key():
-    # Tenta obter de todas as formas possíveis nos Secrets e variáveis de ambiente
     api_key = (
         os.environ.get("GEMINI_API_KEY") 
         or os.environ.get("GOOGLE_API_KEY")
@@ -88,12 +87,12 @@ def obter_gemini_api_key():
 
 API_KEY_GEMINI = obter_gemini_api_key()
 
-# Função Universal para chamar o Gemini via REST API (Sem bibliotecas instáveis)
+# Função Universal para chamar o Gemini via REST API (Endpoint Corrigido)
 def chamar_gemini_api(prompt_texto):
     if not API_KEY_GEMINI:
         return None
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY_GEMINI}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY_GEMINI}"
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{
@@ -101,11 +100,17 @@ def chamar_gemini_api(prompt_texto):
         }]
     }
     try:
-        res = requests.post(url, json=payload, headers=headers, timeout=10)
+        res = requests.post(url, json=payload, headers=headers, timeout=12)
         if res.status_code == 200:
             data = res.json()
             return data['candidates'][0]['content']['parts'][0]['text']
         else:
+            # Fallback para gemini-2.0-flash se o 2.5 não responder
+            url_fallback = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY_GEMINI}"
+            res_fb = requests.post(url_fallback, json=payload, headers=headers, timeout=12)
+            if res_fb.status_code == 200:
+                data_fb = res_fb.json()
+                return data_fb['candidates'][0]['content']['parts'][0]['text']
             return f"⚠️ Erro ao consultar a API do Gemini (Código {res.status_code}): {res.text}"
     except Exception as e:
         return f"⚠️ Falha na conexão com a API do Gemini: {e}"
@@ -242,7 +247,7 @@ if comprovante:
 aba_operacional, aba_crises, aba_sazonal = st.tabs([
     "⚡ 1. Monitoramento & Bloqueios Reais",
     "🚨 2. Resposta a Crises & Emergências",
-    "os 3. Prognóstico Sazonal Dinâmico"
+    "🌋 3. Prognóstico Sazonal Dinâmico"
 ])
 
 # =========================================================
