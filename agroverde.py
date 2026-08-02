@@ -92,7 +92,7 @@ def analisar_dados_com_gemini(prompt_contexto):
     headers = {"Content-Type": "application/json"}
     payload = {"contents": [{"parts": [{"text": prompt_contexto}]}]}
     
-    # Tentativa no modelo gemini-2.5-flash
+    # 1ª Tentativa: gemini-2.5-flash
     url_25 = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY_GEMINI}"
     try:
         res = requests.post(url_25, json=payload, headers=headers, timeout=15)
@@ -101,10 +101,10 @@ def analisar_dados_com_gemini(prompt_contexto):
     except Exception:
         pass
 
-    # Fallback para gemini-1.5-flash / gemini-2.0-flash
-    url_fb = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY_GEMINI}"
+    # 2ª Tentativa (Fallback): gemini-2.0-flash
+    url_20 = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY_GEMINI}"
     try:
-        res_fb = requests.post(url_fb, json=payload, headers=headers, timeout=15)
+        res_fb = requests.post(url_20, json=payload, headers=headers, timeout=15)
         if res_fb.status_code == 200:
             return res_fb.json()['candidates'][0]['content']['parts'][0]['text']
         else:
@@ -247,7 +247,6 @@ with aba_operacional:
 
     st.subheader(f"🤖 Parecer Técnico Agroclimático — {municipio_sel}")
     
-    # Disparo e armazenamento explícito do clique
     if st.button("🧠 Gerar Parecer Técnico (IA)", key="btn_parecer_curto"):
         prompt_curto_prazo = f"""
         Você é um Engenheiro Agrônomo sênior da SEAPI-RS.
@@ -265,7 +264,6 @@ with aba_operacional:
         with st.spinner("Consultando inteligência artificial Gemini..."):
             st.session_state["parecer_curto"] = analisar_dados_com_gemini(prompt_curto_prazo)
 
-    # Exibe o resultado persistido
     if st.session_state["parecer_curto"]:
         st.info(st.session_state["parecer_curto"])
     else:
@@ -394,7 +392,6 @@ with aba_sazonal:
 
     st.subheader(f"📊 Relatório Agrometeorológico Sazonal de Longo Prazo — {municipio_sel}")
     
-    # Disparo e armazenamento do clique
     if st.button("🌋 Gerar Relatório Completo de Resiliência Sazonal (IA)", key="btn_parecer_sazonal", type="primary"):
         prompt_sazonal = f"""
         Você é um especialista sênior em Climatologia Agrícola e Economia Rural da SEAPI-RS.
@@ -410,9 +407,8 @@ with aba_sazonal:
         with st.spinner(f"Processando modelo de inteligência sazonal para {municipio_sel}..."):
             st.session_state["parecer_sazonal"] = analisar_dados_com_gemini(prompt_sazonal)
 
-    # Exibe o resultado persistido
     if st.session_state["parecer_sazonal"]:
         st.markdown(st.session_state["parecer_sazonal"])
     else:
         st.info("💡 **Clique no botão vermelho acima** para gerar a projeção climatológica sazonal estendida da IA para os próximos trimestres.")
-    
+        
