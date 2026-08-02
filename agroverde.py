@@ -75,42 +75,48 @@ st.title("🌾 Agro Resiliência Climática RS")
 st.caption("Secretaria da Agricultura, Pecuária, Produção Sustentável e Irrigação (SEAPI-RS)")
 st.markdown("---")
 
-# 2. Leitura de Chave e Engine do Gemini
-def obter_gemini_api_key():
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+# 2. Leitura de Chave e Engine do Groq (Groq.com)
+def obter_groq_api_key():
+    api_key = os.environ.get("GROQ_API_KEY")
     if not api_key and hasattr(st, "secrets"):
-        api_key = st.secrets.get("GEMINI_API_KEY") or st.secrets.get("GOOGLE_API_KEY")
+        api_key = st.secrets.get("GROQ_API_KEY", None)
     return api_key
 
-API_KEY_GEMINI = obter_gemini_api_key()
+API_KEY_GROQ = obter_groq_api_key()
 
-def analisar_dados_com_gemini(prompt_contexto):
-    """Envia os dados para o Gemini via REST API direta de forma segura."""
-    if not API_KEY_GEMINI:
-        return "⚠️ Chave GEMINI_API_KEY não foi encontrada nos Secrets do Streamlit."
+def analisar_dados_com_groq(prompt_contexto):
+    """Envia o contexto para a API do Groq (Llama 3.3 70B) via REST."""
+    if not API_KEY_GROQ:
+        return "⚠️ Chave `GROQ_API_KEY` não foi encontrada nos Secrets do Streamlit."
     
-    headers = {"Content-Type": "application/json"}
-    payload = {"contents": [{"parts": [{"text": prompt_contexto}]}]}
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {API_KEY_GROQ}"
+    }
+    payload = {
+        "messages": [
+            {
+                "role": "system", 
+                "content": "Você é um Engenheiro Agrônomo e Climatologista Sênior da SEAPI-RS, especialista na agricultura, pecuária e gestão de riscos climáticos do Rio Grande do Sul."
+            },
+            {
+                "role": "user", 
+                "content": prompt_contexto
+            }
+        ],
+        "model": "llama-3.3-70b-versatile",
+        "temperature": 0.3
+    }
     
-    # 1ª Tentativa: gemini-2.5-flash
-    url_25 = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY_GEMINI}"
     try:
-        res = requests.post(url_25, json=payload, headers=headers, timeout=15)
+        res = requests.post(url, json=payload, headers=headers, timeout=15)
         if res.status_code == 200:
-            return res.json()['candidates'][0]['content']['parts'][0]['text']
-    except Exception:
-        pass
-
-    # 2ª Tentativa (Fallback): gemini-2.0-flash
-    url_20 = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY_GEMINI}"
-    try:
-        res_fb = requests.post(url_20, json=payload, headers=headers, timeout=15)
-        if res_fb.status_code == 200:
-            return res_fb.json()['candidates'][0]['content']['parts'][0]['text']
+            return res.json()['choices'][0]['message']['content']
         else:
-            return f"⚠️ Erro no processamento da IA (Código HTTP {res_fb.status_code}): {res_fb.text}"
+            return f"⚠️ Erro ao consultar a API do Groq (Código HTTP {res.status_code}): {res.text}"
     except Exception as e:
-        return f"⚠️ Erro de conexão com o serviço Gemini: {e}"
+        return f"⚠️ Erro de conexão com a API do Groq: {e}"
 
 # 3. CAMADA DE DADOS DETERMINÍSTICA (PYTHON)
 
@@ -204,10 +210,10 @@ dados_16dias = buscar_clima_avancado(lat, lon)
 bloqueios_reais = buscar_dados_bloqueios_crbm(municipio_sel)
 
 st.sidebar.markdown("---")
-if API_KEY_GEMINI:
-    st.sidebar.success("🤖 Google Gemini (IA): **Conectado**")
+if API_KEY_GROQ:
+    st.sidebar.success("⚡ Groq (Llama 3.3): **Conectado**")
 else:
-    st.sidebar.error("🤖 Google Gemini: **Chave Não Encontrada**")
+    st.sidebar.error("⚡ Groq: **Configure a GROQ_API_KEY**")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📲 Reportar Ocorrência de Campo")
@@ -247,27 +253,26 @@ with aba_operacional:
 
     st.subheader(f"🤖 Parecer Técnico Agroclimático — {municipio_sel}")
     
-    if st.button("🧠 Gerar Parecer Técnico (IA)", key="btn_parecer_curto"):
+    if st.button("🧠 Gerar Parecer Técnico (Groq IA)", key="btn_parecer_curto"):
         prompt_curto_prazo = f"""
-        Você é um Engenheiro Agrônomo sênior da SEAPI-RS.
-        Elabore um parecer operacional prático para o município de {municipio_sel} (RS):
-        - Chuva Acumulada em 7 Dias: {chuva_acum_7:.1f} mm
-        - Pico Térmico: {max_temp:.1f} °C
-        - Vento Máximo: {max_vento:.1f} km/h
-        - Interdições no CRBM: {len(bloqueios_reais)} registro(s).
+        Elabore um parecer operacional extremamente detalhado, técnico e prático para o município de {municipio_sel} (RS):
+        - Precipitação Acumulada em 7 Dias: {chuva_acum_7:.1f} mm
+        - Pico Térmico Previsto: {max_temp:.1f} °C
+        - Vento Máximo Previsto: {max_vento:.1f} km/h
+        - Bloqueios Ativos no CRBM: {len(bloqueios_reais)} registro(s).
 
-        Estruture em 3 seções:
-        1. 🌾 **Impacto em Lavouras e Solo:** Janela de pulverização e drenagem.
-        2. 🐄 **Manejo Pecuário e Leite:** Estresse térmico, sanidade e acesso a tambos.
-        3. 🚜 **Logística e Infraestrutura:** Proteção de máquinas e insumos.
+        Estruture a resposta de forma direta em 3 seções com marcadores:
+        1. 🌾 **Impacto em Lavouras e Solo:** Janela ideal de pulverização, riscos de lixiviação e drenagem.
+        2. 🐄 **Manejo Pecuário e Leite:** Controle de estresse térmico, sanidade de casco e tráfego até tambos.
+        3. 🚜 **Logística e Infraestrutura Rural:** Estratégias para tráfego em estradas rurais e proteção de insumos/feno.
         """
-        with st.spinner("Consultando inteligência artificial Gemini..."):
-            st.session_state["parecer_curto"] = analisar_dados_com_gemini(prompt_curto_prazo)
+        with st.spinner("Sintetizando parecer ultra-rápido com Groq (Llama 3.3)..."):
+            st.session_state["parecer_curto"] = analisar_dados_com_groq(prompt_curto_prazo)
 
     if st.session_state["parecer_curto"]:
         st.info(st.session_state["parecer_curto"])
     else:
-        st.caption("👈 Clique no botão acima para acionar a Inteligência Artificial e gerar uma análise detalhada baseada nos dados climáticos atuais.")
+        st.caption("👈 Clique no botão acima para acionar a Inteligência Artificial do Groq e gerar a análise.")
 
     st.markdown("---")
 
@@ -392,23 +397,21 @@ with aba_sazonal:
 
     st.subheader(f"📊 Relatório Agrometeorológico Sazonal de Longo Prazo — {municipio_sel}")
     
-    if st.button("🌋 Gerar Relatório Completo de Resiliência Sazonal (IA)", key="btn_parecer_sazonal", type="primary"):
+    if st.button("🌋 Gerar Relatório Completo de Resiliência Sazonal (Groq IA)", key="btn_parecer_sazonal", type="primary"):
         prompt_sazonal = f"""
-        Você é um especialista sênior em Climatologia Agrícola e Economia Rural da SEAPI-RS.
-        Elabore um PROGNÓSTICO SAZONAL DE RESILIÊNCIA CLIMÁTICA detalhado para o município de {municipio_sel} (RS) (Lat: {lat}, Lon: {lon}).
+        Elabore um PROGNÓSTICO SAZONAL DE RESILIÊNCIA CLIMÁTICA completo, técnico e aprofundado para o município de {municipio_sel} (RS) (Lat: {lat}, Lon: {lon}).
 
-        Considere o histórico agrícola da região e tendências de anomalias no Sul do Brasil.
+        Considere a vocação agrícola e pecuária local e a dinâmica climática do Sul do Brasil.
 
-        Estruture o relatório nestes 3 tópicos:
-        1. 📅 **Projeção Climatológica Trimestral ({municipio_sel}):** Tendências de precipitação acumulada e riscos de eventos extremos para 3 a 6 meses.
-        2. 🌾 **Impactos e Riscos nas Culturas Locais:** Avaliação específica para grãos, pecuária ou fruticultura local.
-        3. 🛡️ **Plano Diretor de Resiliência Rural:** Conservação do solo, manejo de água, pastagens e seguro rural.
+        Estruture o relatório exatamente nestas 3 seções:
+        1. 📅 **Projeção Climatológica Trimestral ({municipio_sel}):** Tendências de precipitação acumulada, anomalias de temperatura e riscos de eventos extremos (enxurradas ou estiagens) para os próximos 3 a 6 meses.
+        2. 🌾 **Impactos e Riscos nas Culturas Locais:** Avaliação para as principais cadeias produtivas (grãos, pecuária leiteira/corte, horticultura ou fruticultura).
+        3. 🛡️ **Plano Diretor de Resiliência Rural:** Recomendações técnicas para conservação do solo, manejo de água/irrigação, proteção de pastagens e mitigação de perdas financeiras.
         """
-        with st.spinner(f"Processando modelo de inteligência sazonal para {municipio_sel}..."):
-            st.session_state["parecer_sazonal"] = analisar_dados_com_gemini(prompt_sazonal)
+        with st.spinner(f"Processando relatório sazonal com Groq para {municipio_sel}..."):
+            st.session_state["parecer_sazonal"] = analisar_dados_com_groq(prompt_sazonal)
 
     if st.session_state["parecer_sazonal"]:
         st.markdown(st.session_state["parecer_sazonal"])
     else:
         st.info("💡 **Clique no botão vermelho acima** para gerar a projeção climatológica sazonal estendida da IA para os próximos trimestres.")
-        
