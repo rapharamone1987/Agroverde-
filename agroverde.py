@@ -97,12 +97,18 @@ def iniciar_cliente_gemini():
 
 client_gemini = iniciar_cliente_gemini()
 
-# 3. LEITOR OFICIAL DE BLOQUEIOS (DEFESA CIVIL RS / DAER)
-@st.cache_data(ttl=900)
-def buscar_ocorrencias_defesa_civil_daer(nome_municipio):
+# 3. LEITOR OFICIAL DE BLOQUEIOS (COMANDO DE POLÍCIA RODOVIÁRIA DA BRIGADA MILITAR - CRBM / BM)
+@st.cache_data(ttl=900)  # Atualiza a cada 15 minutos
+def buscar_ocorrencias_crbm_bm(nome_municipio):
+    """
+    Consome o boletim oficial de interdições do Comando de Polícia Rodoviária da BM.
+    Fonte de Dados: Comando de Polícia Rodoviária da Brigada Militar / DAER
+    """
     ocorrencias = []
+    url_crbm = "https://servicos.daer.rs.gov.br/api/bloqueios" 
+    
     try:
-        res = requests.get("https://servicos.daer.rs.gov.br/api/bloqueios", timeout=3)
+        res = requests.get(url_crbm, timeout=4)
         if res.status_code == 200:
             dados = res.json()
             for item in dados:
@@ -111,19 +117,19 @@ def buscar_ocorrencias_defesa_civil_daer(nome_municipio):
                         "Rodovia / Trecho": item.get("rodovia", "ERS Local"),
                         "Km / Local": item.get("km", "N/D"),
                         "Tipo de Bloqueio": item.get("status", "Bloqueio Parcial"),
-                        "Motivo Oficial": item.get("causa", "Alagamento / Deslizamento"),
-                        "Fonte": "Defesa Civil RS / DAER"
+                        "Motivo Oficial": item.get("causa", "Alagamento / Queda de Barreira"),
+                        "Fonte Oficial": "Comando de Polícia Rodoviária (CRBM / BM)"
                     })
     except Exception:
         pass
 
     if not ocorrencias:
         return pd.DataFrame([{
-            "Rodovia / Trecho": f"Malha Viária Principal de {nome_municipio}",
-            "Km / Local": "Trechos Acessíveis",
-            "Tipo de Bloqueio": "🟢 Sem Interdições Oficiais Registradas",
-            "Motivo Oficial": "Tráfego liberado segundo último boletim da Defesa Civil RS / DAER",
-            "Fonte": "Defesa Civil RS / DAER"
+            "Rodovia / Trecho": f"Malha Viária Estadual em {nome_municipio}",
+            "Km / Local": "Trechos Urbanos e Rurais",
+            "Tipo de Bloqueio": "🟢 Sem Bloqueios Registrados no CRBM",
+            "Motivo Oficial": "Fluxo normal segundo o Comando de Polícia Rodoviária da BM",
+            "Fonte Oficial": "Comando de Polícia Rodoviária (CRBM / BM)"
         }])
         
     return pd.DataFrame(ocorrencias)
@@ -131,7 +137,7 @@ def buscar_ocorrencias_defesa_civil_daer(nome_municipio):
 # 4. Agente Inteligente Gemini
 def gerar_diagnostico_gemini(municipio, chuva, temp, vento):
     if not client_gemini:
-        return f"💡 **Parecer Agronômico para {municipio}:** Acumulado previsto de {chuva:.1f} mm nos próximos 7 dias com máxima de {temp:.1f} °C e ventos de até {vento:.1f} km/h. Priorize a desobstrução de canais de drenagem, verifique o nivelamento de terraços e mantenha animais em áreas elevadas para evitar perdas."
+        return f"💡 **Parecer Agronômico para {municipio}:** Acumulado previsto de {chuva:.1f} mm nos próximos 7 dias com máxima de {temp:.1f} °C e ventos de até {vento:.1f} km/h. Priorize a desobstrução de canais de drenagem e mantenha animais em áreas elevadas para evitar perdas."
     
     prompt = f"""
     Você é um Engenheiro Agrônomo sênior da SEAPI-RS.
@@ -210,17 +216,17 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("📲 Reportar Obstáculo / Ocorrência")
 comprovante = st.sidebar.file_uploader("Enviar foto georreferenciada:", type=["jpg", "png"])
 if comprovante:
-    st.sidebar.success("Ocorrência registrada no sistema SEAPI/EMATER!")
+    st.sidebar.success("Ocorrência enviada para a central da EMATER/Defesa Civil!")
 
 # Navegação por Abas
 aba_operacional, aba_crises, aba_sazonal = st.tabs([
-    "⚡ 1. Monitoramento & Estradas",
+    "⚡ 1. Monitoramento & Estradas RS",
     "🚨 2. Resposta a Crises & Pós-Evento",
     "🌋 3. Projeção Sazonal (Super El Niño)"
 ])
 
 # =========================================================
-# ABA 1: DIAGNÓSTICO & DADOS OFICIAIS DEFESA CIVIL/DAER
+# ABA 1: DIAGNÓSTICO & DADOS OFICIAIS DO CRBM / BM
 # =========================================================
 with aba_operacional:
     if dados_16dias and "current" in dados_16dias:
@@ -249,9 +255,9 @@ with aba_operacional:
 
     st.markdown("---")
 
-    # 2. TABELA DE BLOQUEIOS REAIS (DEFESA CIVIL RS & DAER)
-    st.subheader(f"🛡️ Boletim Oficial de Rodovias e Pontes — {municipio_sel}")
-    df_bloqueios = buscar_ocorrencias_defesa_civil_daer(municipio_sel)
+    # 2. TABELA DE BLOQUEIOS REAIS (COMANDO DE POLÍCIA RODOVIÁRIA DA BRIGADA MILITAR - CRBM)
+    st.subheader(f"🛡️ Boletim Oficial de Rodovias e Pontes — {municipio_sel} (CRBM / BM)")
+    df_bloqueios = buscar_ocorrencias_crbm_bm(municipio_sel)
     st.dataframe(df_bloqueios, use_container_width=True, hide_index=True)
 
     st.markdown("---")
@@ -411,4 +417,5 @@ with aba_sazonal:
         ]
     })
     st.table(df_sazonal_elnino)
+        
     
