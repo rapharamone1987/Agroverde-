@@ -4,7 +4,13 @@ from streamlit_folium import st_folium
 import pandas as pd
 import requests
 import os
-from google import genai
+
+# Importação segura do SDK do Google GenAI
+try:
+    from google import genai
+    GENAI_DISPONIVEL = True
+except ImportError:
+    GENAI_DISPONIVEL = False
 
 # 1. Configuração da Página
 st.set_page_config(
@@ -13,7 +19,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS Customizada (Otimizada para Mobile e Contraste)
+# Estilização CSS Customizada (Mobile & Contraste)
 st.markdown("""
     <style>
     div[data-testid="stMarkdownContainer"] p, div[data-testid="stMarkdownContainer"] li {
@@ -78,7 +84,9 @@ st.markdown("---")
 # 2. Inicialização da API do Google Gemini
 @st.cache_resource
 def iniciar_cliente_gemini():
-    api_key = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
+    if not GENAI_DISPONIVEL:
+        return None
+    api_key = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
     if api_key:
         return genai.Client(api_key=api_key)
     return None
@@ -86,16 +94,10 @@ def iniciar_cliente_gemini():
 client_gemini = iniciar_cliente_gemini()
 
 # 3. LEITOR OFICIAL DE BLOQUEIOS (DEFESA CIVIL RS / DAER)
-@st.cache_data(ttl=900)  # Atualiza a cada 15 minutos
+@st.cache_data(ttl=900)
 def buscar_ocorrencias_defesa_civil_daer(nome_municipio):
-    """
-    Consome o feed público de emergências e interdições de rodovias do RS.
-    """
-    url_boletim_rs = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson" # Endpoint base/Cache governamental
     ocorrencias = []
-    
     try:
-        # Simulando busca no portal de dados abertos do RS / Defesa Civil
         res = requests.get("https://servicos.daer.rs.gov.br/api/bloqueios", timeout=4)
         if res.status_code == 200:
             dados = res.json()
@@ -111,7 +113,6 @@ def buscar_ocorrencias_defesa_civil_daer(nome_municipio):
     except Exception:
         pass
 
-    # Se não houver ocorrência registrada no boletim oficial para a cidade
     if not ocorrencias:
         return pd.DataFrame([{
             "Rodovia / Trecho": f"Malha Viária de {nome_municipio}",
@@ -123,10 +124,10 @@ def buscar_ocorrencias_defesa_civil_daer(nome_municipio):
         
     return pd.DataFrame(ocorrencias)
 
-# 4. Agente Inteligente Gemini para Parecer Agroclimático
+# 4. Agente Inteligente Gemini
 def gerar_diagnostico_gemini(municipio, chuva, temp, vento):
     if not client_gemini:
-        return "⚠️ Chave GEMINI_API_KEY não configurada nos Secrets do Streamlit."
+        return "⚠️ Chave GEMINI_API_KEY não configurada ou biblioteca `google-genai` ausente no ambiente."
     
     prompt = f"""
     Você é um Engenheiro Agrônomo especialista da SEAPI-RS.
@@ -229,11 +230,16 @@ with aba_operacional:
     st.markdown("---")
 
     if dados_16dias and "daily" in dados_16dias:
-        daily = dados_16dias["daily"]
-        chuvas = daily["precipitation_sum"]
-        chuva_acum_7 = sum(chuvas[:7])
-        max_temp = max(daily["temperature_2m_max"])
-        max_vento = max(daily["wind_speed_10m_max"])
+        daily = dados_16dias.get("daily", {})
+        
+        # Proteção contra retornos vazios da API para evitar o erro de max()
+        chuvas = daily.get("precipitation_sum", [])
+        temp_max_list = daily.get("temperature_2m_max", [])
+        vento_max_list = daily.get("wind_speed_10m_max", [])
+
+        chuva_acum_7 = sum(chuvas[:7]) if chuvas else 0.0
+        max_temp = max(temp_max_list) if temp_max_list else 25.0
+        max_vento = max(vento_max_list) if vento_max_list else 10.0
 
         # 1. Parecer Técnico com IA Gemini
         st.subheader(f"🤖 Parecer Técnico IA Google Gemini — {municipio_sel}")
@@ -312,10 +318,10 @@ with aba_operacional:
         if dados_16dias and "daily" in dados_16dias:
             daily = dados_16dias["daily"]
             df_16 = pd.DataFrame({
-                "Data": daily["time"],
-                "Chuva (mm)": daily["precipitation_sum"],
-                "Máx (°C)": daily["temperature_2m_max"],
-                "Vento (km/h)": daily["wind_speed_10m_max"]
+                "Data": daily.get("time", []),
+                "Chuva (mm)": daily.get("precipitation_sum", []),
+                "Máx (°C)": daily.get("temperature_2m_max", []),
+                "Vento (km/h)": daily.get("wind_speed_10m_max", [])
             })
             st.dataframe(df_16, use_container_width=True, height=300, hide_index=True)
 
