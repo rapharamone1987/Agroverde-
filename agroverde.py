@@ -75,52 +75,44 @@ st.title("🌾 AgroVerde RS — Gêmeo Digital & Inteligência Climática")
 st.caption("Secretaria da Agricultura, Pecuária, Produção Sustentável e Irrigação (SEAPI-RS)")
 st.markdown("---")
 
-# 2. Leitura Direta da Chave nos Secrets
+# 2. Leitura de Chave e Engine do Gemini (REST API Apenas para Análise)
 def obter_gemini_api_key():
-    api_key = (
-        os.environ.get("GEMINI_API_KEY") 
-        or os.environ.get("GOOGLE_API_KEY")
-    )
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key and hasattr(st, "secrets"):
         api_key = st.secrets.get("GEMINI_API_KEY") or st.secrets.get("GOOGLE_API_KEY")
     return api_key
 
 API_KEY_GEMINI = obter_gemini_api_key()
 
-# Função Universal para chamar o Gemini via REST API (Endpoint Corrigido)
-def chamar_gemini_api(prompt_texto):
+def analisar_dados_com_gemini(prompt_contexto):
+    """Envia os DADOS REAIS capturados pelo Python para a IA sintetizar a análise agronômica."""
     if not API_KEY_GEMINI:
         return None
     
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY_GEMINI}"
     headers = {"Content-Type": "application/json"}
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt_texto}]
-        }]
-    }
+    payload = {"contents": [{"parts": [{"text": prompt_contexto}]}]}
+    
     try:
         res = requests.post(url, json=payload, headers=headers, timeout=12)
         if res.status_code == 200:
-            data = res.json()
-            return data['candidates'][0]['content']['parts'][0]['text']
+            return res.json()['candidates'][0]['content']['parts'][0]['text']
         else:
-            # Fallback para gemini-2.0-flash se o 2.5 não responder
-            url_fallback = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY_GEMINI}"
-            res_fb = requests.post(url_fallback, json=payload, headers=headers, timeout=12)
+            url_fb = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY_GEMINI}"
+            res_fb = requests.post(url_fb, json=payload, headers=headers, timeout=12)
             if res_fb.status_code == 200:
-                data_fb = res_fb.json()
-                return data_fb['candidates'][0]['content']['parts'][0]['text']
-            return f"⚠️ Erro ao consultar a API do Gemini (Código {res.status_code}): {res.text}"
+                return res_fb.json()['candidates'][0]['content']['parts'][0]['text']
+            return f"⚠️ Não foi possível gerar a análise por IA (Erro HTTP {res.status_code})."
     except Exception as e:
-        return f"⚠️ Falha na conexão com a API do Gemini: {e}"
+        return f"⚠️ Falha de conexão com o serviço de análise: {e}"
 
-# 3. CONSULTA EM TEMPO REAL DE BLOQUEIOS DO CRBM / DAER
+# 3. CAMADA DE DADOS DETERMINÍSTICA (PYTHON FETCH)
+
+# A) Bloqueios em tempo real no CRBM / DAER
 @st.cache_data(ttl=600)
-def consultar_bloqueios_crbm_reais(nome_municipio):
+def buscar_dados_bloqueios_crbm(nome_municipio):
     url_crbm = "https://servicos.daer.rs.gov.br/api/bloqueios"
     ocorrencias = []
-    
     try:
         res = requests.get(url_crbm, timeout=5)
         if res.status_code == 200:
@@ -138,47 +130,9 @@ def consultar_bloqueios_crbm_reais(nome_municipio):
                         })
     except Exception:
         pass
-
     return ocorrencias
 
-# 4. AGENTE INTELIGENTE: PARECER DE CURTO PRAZO
-def gerar_diagnostico_curto_prazo(municipio, chuva, temp, vento):
-    prompt = f"""
-    Atue como Engenheiro Agrônomo especialista da SEAPI-RS.
-    Elabore uma análise operacional de curto prazo para o município de {municipio} (RS):
-    - Chuva Prevista (7 Dias): {chuva:.1f} mm
-    - Pico Térmico: {temp:.1f} °C
-    - Rajada de Vento: {vento:.1f} km/h
-
-    Responda em 3 tópicos objetivos:
-    1. 🌾 **Impacto Agrícola:** Risco de erosão e janela ideal para aplicação de defensivos/insumos.
-    2. 🐄 **Manejo Pecuário:** Cuidados contra estresse térmico ou barro em tambos/ordenha.
-    3. 🚜 **Estrutura & Logística:** Cuidados com armazenamento de feno, silos e proteção de máquinas.
-    """
-    resposta = chamar_gemini_api(prompt)
-    if resposta:
-        return resposta
-    return f"💡 **Alerta Operacional ({municipio}):** Acumulado de {chuva:.1f} mm previstos para os próximos 7 dias. Verifique os canais de drenagem nas lavouras e mantenha animais em áreas elevadas."
-
-# 5. AGENTE INTELIGENTE: PROGNÓSTICO SAZONAL DINÂMICO
-def gerar_prognostico_sazonal_gemini(municipio, lat, lon):
-    prompt = f"""
-    Você é um especialista em Climatologia Agrícola e Economia Rural do Rio Grande do Sul (SEAPI-RS).
-    Gere um PROGNÓSTICO SAZONAL ESTRATÉGICO real para o município de {municipio} (RS) (Coordenadas: {lat}, {lon}).
-
-    Considere as características geográficas e agrícolas reais deste município no RS e a dinâmica climática sazonal atual.
-
-    Estruture a resposta nos seguintes tópicos técnicos:
-    1. 📅 **Cenário Climatológico Trimestral para {municipio}:** Projeção de chuvas e temperatura para os próximos 3 a 6 meses.
-    2. 🌾 **Riscos para as Principais Culturas Locais:** Como o clima afetará as principais atividades agrícolas/pecuárias típicas desse município.
-    3. 🛡️ **Plano de Contingência Recomendado ao Produtor:** Ações preventivas de manejo de solo, reserva hídrica e logística.
-    """
-    resposta = chamar_gemini_api(prompt)
-    if resposta:
-        return resposta
-    return "⚠️ Configure a chave `GEMINI_API_KEY` nos Secrets do Streamlit para gerar o prognóstico sazonal detalhado por Inteligência Artificial."
-
-# 6. APIs IBGE e Clima
+# B) Municípios IBGE
 @st.cache_data(ttl=86400)
 def carregar_municipios_ibge():
     url = "https://servicodados.ibge.gov.br/api/v1/localidades/estados/43/municipios"
@@ -190,6 +144,7 @@ def carregar_municipios_ibge():
         pass
     return ["Osório", "Alegrete", "Bagé", "Camaquã", "Cruz Alta", "Porto Alegre", "Uruguaiana"]
 
+# C) Coordenadas Nominatim
 @st.cache_data(ttl=86400)
 def buscar_coordenadas_municipio(nome_municipio):
     url = f"https://nominatim.openstreetmap.org/search?format=json&q={nome_municipio},Rio+Grande+do+Sul,Brasil"
@@ -203,6 +158,7 @@ def buscar_coordenadas_municipio(nome_municipio):
         pass
     return -30.0346, -51.2177
 
+# D) Clima Open-Meteo
 @st.cache_data(ttl=3600)
 def buscar_clima_avancado(lat, lon):
     url = (
@@ -229,13 +185,13 @@ municipio_sel = st.sidebar.selectbox(
 
 lat, lon = buscar_coordenadas_municipio(municipio_sel)
 dados_16dias = buscar_clima_avancado(lat, lon)
+bloqueios_reais = buscar_dados_bloqueios_crbm(municipio_sel)
 
 st.sidebar.markdown("---")
-# Status do Gemini na Sidebar
 if API_KEY_GEMINI:
-    st.sidebar.success("🤖 Google Gemini IA: **Conectado**")
+    st.sidebar.success("🤖 Google Gemini (Motor de Análise): **Ativo**")
 else:
-    st.sidebar.warning("🤖 Google Gemini IA: **Chave não encontrada nos Secrets**")
+    st.sidebar.warning("🤖 Google Gemini: **Offline** (Configure a chave nos Secrets)")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📲 Reportar Ocorrência de Campo")
@@ -264,6 +220,7 @@ with aba_operacional:
 
     st.markdown("---")
 
+    # Extração de métricas pelo Python
     daily = dados_16dias.get("daily", {}) if dados_16dias else {}
     chuvas = [v for v in (daily.get("precipitation_sum") or []) if v is not None]
     temp_max_list = [v for v in (daily.get("temperature_2m_max") or []) if v is not None]
@@ -273,22 +230,39 @@ with aba_operacional:
     max_temp = float(max(temp_max_list)) if temp_max_list else 25.0
     max_vento = float(max(vento_max_list)) if vento_max_list else 10.0
 
-    st.subheader(f"🤖 Parecer Técnico Operacional — {municipio_sel}")
-    parecer_ia = gerar_diagnostico_curto_prazo(municipio_sel, chuva_acum_7, max_temp, max_vento)
-    st.info(parecer_ia)
+    # CHAMADA DA IA: Passando os DADOS PYTHON como CONTEXTO ESTRITO
+    st.subheader(f"🤖 Parecer Técnico Operacional (IA SEAPI) — {municipio_sel}")
+    
+    prompt_curto_prazo = f"""
+    Você é um Engenheiro Agrônomo sênior da SEAPI-RS.
+    Análise os seguintes DADOS REAIS coletados no município de {municipio_sel} (RS):
+    - Chuva Acumulada Prevista (7 Dias): {chuva_acum_7:.1f} mm
+    - Pico de Temperatura Previsto: {max_temp:.1f} °C
+    - Vento Máximo Previsto: {max_vento:.1f} km/h
+    - Situação das Rodovias no CRBM: {len(bloqueios_reais)} interdição(ões) registrada(s).
+
+    Gere um parecer técnico direto (3 tópicos curtos):
+    1. 🌾 **Impacto em Lavoras e Solos:** Janela de pulverização e riscos de enxurrada.
+    2. 🐄 **Manejo Pecuário:** Cuidados com gado de leite/corte frente ao clima.
+    3. 🚜 **Logística & Acesso:** Alerta de escoamento com base no clima e bloqueios.
+    """
+    
+    parecer_ia = analisar_dados_com_gemini(prompt_curto_prazo)
+    if parecer_ia:
+        st.info(parecer_ia)
+    else:
+        st.info(f"💡 **Resumo Operacional ({municipio_sel}):** Chuva acumulada de {chuva_acum_7:.1f} mm prevista. Recomenda-se atenção aos canais de drenagem e monitoramento das estradas vicinais.")
 
     st.markdown("---")
 
-    # CONSULTA EM TEMPO REAL AO BOLETIM DA BRIGADA MILITAR / CRBM
+    # EXIBIÇÃO DETERMINÍSTICA DOS BLOQUEIOS (SEMPRE REAL)
     st.subheader(f"🛡️ Bloqueios em Rodovias Registrados no CRBM — {municipio_sel}")
-    bloqueios_reais = consultar_bloqueios_crbm_reais(municipio_sel)
-    
     if bloqueios_reais:
-        st.warning(f"🚨 Atualmente existem **{len(bloqueios_reais)} interdição(ões) registrada(s)** no mapa do CRBM para {municipio_sel}:")
+        st.warning(f"🚨 **{len(bloqueios_reais)} interdição(ões) ativa(s)** encontrada(s) no sistema do Comando de Polícia Rodoviária da BM para {municipio_sel}:")
         st.dataframe(pd.DataFrame(bloqueios_reais), use_container_width=True, hide_index=True)
     else:
-        st.success(f"🟢 **Nenhum bloqueio rodoviário ativo** registrado no banco oficial do Comando de Polícia Rodoviária da BM para o município de **{municipio_sel}** neste momento.")
-        st.caption("Nota: Vicinais municipais de terra podem sofrer atoleiros locais em dias de chuva intensa. Consulte a Defesa Civil Municipal pelo 199.")
+        st.success(f"🟢 **Nenhum bloqueio rodoviário ativo** registrado no boletim do Comando de Polícia Rodoviária da BM para **{municipio_sel}**.")
+        st.caption("Nota: Para alertas de estradas municipais vicinais de terra, consulte a Defesa Civil Municipal (199).")
 
     st.markdown("---")
 
@@ -334,7 +308,7 @@ with aba_operacional:
 
     st.markdown("---")
 
-    # Mapa Interativo e Tabela Diária
+    # Mapa e Tabela Diária
     c_mapa, c_tabela = st.columns([2, 1])
     with c_mapa:
         st.subheader(f"🗺️ Mapa Tático — {municipio_sel}")
@@ -343,7 +317,7 @@ with aba_operacional:
             folium.Marker([lat, lon], popup=f"<b>{municipio_sel}</b>").add_to(m)
             st_folium(m, width="100%", height=350)
         except Exception:
-            st.warning("Não foi possível carregar a visualização do mapa no momento.")
+            st.warning("Não foi possível carregar o mapa interativo no momento.")
         
     with c_tabela:
         st.subheader("📅 Previsão (16 Dias)")
@@ -393,7 +367,7 @@ with aba_crises:
             """)
 
 # =========================================================
-# ABA 3: PROGNÓSTICO SAZONAL DINÂMICO (VIA GEMINI IA)
+# ABA 3: PROGNÓSTICO SAZONAL DINÂMICO
 # =========================================================
 with aba_sazonal:
     st.markdown("""
@@ -403,9 +377,25 @@ with aba_sazonal:
     </div>
     """, unsafe_allow_html=True)
 
-    st.subheader(f"📊 Relatório Climatológico Sazonal Específico — {municipio_sel}")
+    st.subheader(f"📊 Análise Agrometeorológica Sazonal — {municipio_sel}")
     
-    with st.spinner(f"Gerando análise de inteligência sazonal customizada para {municipio_sel}..."):
-        relatorio_sazonal = gerar_prognostico_sazonal_gemini(municipio_sel, lat, lon)
-        st.markdown(relatorio_sazonal)
+    prompt_sazonal = f"""
+    Você é um especialista em Climatologia Agrícola e Economia Rural da SEAPI-RS.
+    Elabore um PROGNÓSTICO SAZONAL ESTRATÉGICO para o município de {municipio_sel} (RS) (Lat: {lat}, Lon: {lon}).
+
+    Considere que o município está inserido no contexto produtivo do RS com os seguintes dados climáticos imediatos:
+    - Acumulado de chuva nos próximos dias: {chuva_acum_7:.1f} mm
     
+    Estruture a resposta nos seguintes tópicos técnicos:
+    1. 📅 **Cenário Climatológico Trimestral para {municipio_sel}:** Projeção de chuvas e temperatura para os próximos 3 a 6 meses.
+    2. 🌾 **Riscos para as Principais Culturas Locais:** Como a tendência climática afetará as principais atividades agrícolas/pecuárias típicas desse município.
+    3. 🛡️ **Plano de Contingência Recomendado ao Produtor:** Ações preventivas de manejo de solo, reserva hídrica e logística.
+    """
+    
+    with st.spinner(f"Processando dados de clima e geografia para {municipio_sel}..."):
+        relatorio_sazonal = analisar_dados_com_gemini(prompt_sazonal)
+        if relatorio_sazonal:
+            st.markdown(relatorio_sazonal)
+        else:
+            st.warning("⚠️ O relatório sazonal estendido requer a chave GEMINI_API_KEY configurada nos Secrets.")
+            
