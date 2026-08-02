@@ -86,9 +86,12 @@ st.markdown("---")
 def iniciar_cliente_gemini():
     if not GENAI_DISPONIVEL:
         return None
-    api_key = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
-    if api_key:
-        return genai.Client(api_key=api_key)
+    try:
+        api_key = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
+        if api_key:
+            return genai.Client(api_key=api_key)
+    except Exception:
+        pass
     return None
 
 client_gemini = iniciar_cliente_gemini()
@@ -98,11 +101,11 @@ client_gemini = iniciar_cliente_gemini()
 def buscar_ocorrencias_defesa_civil_daer(nome_municipio):
     ocorrencias = []
     try:
-        res = requests.get("https://servicos.daer.rs.gov.br/api/bloqueios", timeout=4)
+        res = requests.get("https://servicos.daer.rs.gov.br/api/bloqueios", timeout=3)
         if res.status_code == 200:
             dados = res.json()
             for item in dados:
-                if nome_municipio.lower() in item.get("municipio", "").lower():
+                if isinstance(item, dict) and nome_municipio.lower() in item.get("municipio", "").lower():
                     ocorrencias.append({
                         "Rodovia / Trecho": item.get("rodovia", "ERS Local"),
                         "Km / Local": item.get("km", "N/D"),
@@ -127,19 +130,16 @@ def buscar_ocorrencias_defesa_civil_daer(nome_municipio):
 # 4. Agente Inteligente Gemini
 def gerar_diagnostico_gemini(municipio, chuva, temp, vento):
     if not client_gemini:
-        return "⚠️ Chave GEMINI_API_KEY não configurada ou biblioteca `google-genai` ausente no ambiente."
+        return f"💡 **Resumo Operacional ({municipio}):** Acumulado de {chuva:.1f}mm previstos. Mantenha o monitoramento regular das drenagens e das pastagens."
     
     prompt = f"""
-    Você é um Engenheiro Agrônomo especialista da SEAPI-RS.
-    Análise os dados meteorológicos oficiais para o município de {municipio} (RS):
-    - Acumulado de chuva em 7 dias: {chuva:.1f} mm
-    - Pico de Temperatura: {temp:.1f} °C
-    - Rajada de Vento Máxima: {vento:.1f} km/h
+    Você é um Engenheiro Agrônomo da SEAPI-RS.
+    Análise os dados para {municipio} (RS):
+    - Chuva em 7 dias: {chuva:.1f} mm
+    - Pico de Temp: {temp:.1f} °C
+    - Vento Máx: {vento:.1f} km/h
 
-    Emita um parecer técnico direto (máximo 3 tópicos de 2 linhas) orientando a tomada de decisão no campo:
-    1. Impacto direto nas lavouras da região.
-    2. Cuidados com o rebanho e infraestrutura rural.
-    3. Recomendação tática de manejo para o produtor rural.
+    Emita parecer direto (máximo 3 tópicos curtos) com orientações técnicas para lavoura, pecuária e logística.
     """
     try:
         response = client_gemini.models.generate_content(
@@ -147,15 +147,15 @@ def gerar_diagnostico_gemini(municipio, chuva, temp, vento):
             contents=prompt,
         )
         return response.text
-    except Exception as e:
-        return f"Não foi possível consultar a IA no momento ({e})."
+    except Exception:
+        return f"💡 **Resumo Operacional ({municipio}):** Acumulado de {chuva:.1f}mm previstos. Mantenha o monitoramento das lavouras e pastagens."
 
 # 5. APIs IBGE e Clima
 @st.cache_data(ttl=86400)
 def carregar_municipios_ibge():
     url = "https://servicodados.ibge.gov.br/api/v1/localidades/estados/43/municipios"
     try:
-        res = requests.get(url, timeout=10)
+        res = requests.get(url, timeout=5)
         if res.status_code == 200:
             return sorted([m["nome"] for m in res.json()])
     except Exception:
@@ -167,7 +167,7 @@ def buscar_coordenadas_municipio(nome_municipio):
     url = f"https://nominatim.openstreetmap.org/search?format=json&q={nome_municipio},Rio+Grande+do+Sul,Brasil"
     headers = {"User-Agent": "AgroVerdeRS_App"}
     try:
-        res = requests.get(url, headers=headers, timeout=5)
+        res = requests.get(url, headers=headers, timeout=4)
         if res.status_code == 200 and len(res.json()) > 0:
             item = res.json()[0]
             return float(item["lat"]), float(item["lon"])
@@ -194,7 +194,7 @@ st.sidebar.header("🔍 Painel de Controle")
 
 lista_municipios = carregar_municipios_ibge()
 municipio_sel = st.sidebar.selectbox(
-    f"Selecione o Município ({len(lista_municipios)} no RS):", 
+    f"Selecione o Município:", 
     lista_municipios, 
     index=lista_municipios.index("Osório") if "Osório" in lista_municipios else 0
 )
@@ -203,14 +203,14 @@ lat, lon = buscar_coordenadas_municipio(municipio_sel)
 dados_16dias = buscar_clima_avancado(lat, lon)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📲 Reportar Obstáculo / Ocorrência")
+st.sidebar.subheader("📲 Reportar Ocorrência")
 comprovante = st.sidebar.file_uploader("Enviar foto georreferenciada:", type=["jpg", "png"])
 if comprovante:
-    st.sidebar.success("Ocorrência enviada para a central da EMATER/Defesa Civil!")
+    st.sidebar.success("Ocorrência registrada!")
 
 # Navegação por Abas
 aba_operacional, aba_crises, aba_sazonal = st.tabs([
-    "⚡ 1. Diagnóstico & Estradas RS",
+    "⚡ 1. Diagnóstico & Estradas",
     "🚨 2. Resposta a Crises",
     "🌋 3. Projeção Sazonal"
 ])
@@ -220,7 +220,7 @@ aba_operacional, aba_crises, aba_sazonal = st.tabs([
 # =========================================================
 with aba_operacional:
     if dados_16dias and "current" in dados_16dias:
-        curr = dados_16dias["current"]
+        curr = dados_16dias.get("current", {})
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("🌡️ Temp. Atual", f"{curr.get('temperature_2m', 'N/D')} °C")
         c2.metric("💧 Umidade Ar", f"{curr.get('relative_humidity_2m', 'N/D')} %")
@@ -229,94 +229,85 @@ with aba_operacional:
 
     st.markdown("---")
 
-    if dados_16dias and "daily" in dados_16dias:
-        daily = dados_16dias.get("daily", {})
-        
-        # Proteção contra retornos vazios da API para evitar o erro de max()
-        chuvas = daily.get("precipitation_sum", [])
-        temp_max_list = daily.get("temperature_2m_max", [])
-        vento_max_list = daily.get("wind_speed_10m_max", [])
+    # Extração ultra segura de dados diários
+    daily = dados_16dias.get("daily", {}) if dados_16dias else {}
+    chuvas = daily.get("precipitation_sum") or [0.0]
+    temp_max_list = daily.get("temperature_2m_max") or [25.0]
+    vento_max_list = daily.get("wind_speed_10m_max") or [10.0]
 
-        chuva_acum_7 = sum(chuvas[:7]) if chuvas else 0.0
-        max_temp = max(temp_max_list) if temp_max_list else 25.0
-        max_vento = max(vento_max_list) if vento_max_list else 10.0
+    chuva_acum_7 = float(sum(chuvas[:7])) if chuvas else 0.0
+    max_temp = float(max(temp_max_list)) if temp_max_list else 25.0
+    max_vento = float(max(vento_max_list)) if vento_max_list else 10.0
 
-        # 1. Parecer Técnico com IA Gemini
-        st.subheader(f"🤖 Parecer Técnico IA Google Gemini — {municipio_sel}")
-        with st.spinner("Analisando dados com o modelo Gemini..."):
-            parecer_ia = gerar_diagnostico_gemini(municipio_sel, chuva_acum_7, max_temp, max_vento)
-            st.info(parecer_ia)
-
-        st.markdown("---")
-
-        # 2. TABELA DE BLOQUEIOS REAIS (DEFESA CIVIL RS & DAER)
-        st.subheader(f"🛡️ Boletim Oficial de Rodovias e Pontes — {municipio_sel} (Defesa Civil RS / DAER)")
-        df_bloqueios = buscar_ocorrencias_defesa_civil_daer(municipio_sel)
-        st.dataframe(df_bloqueios, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-
-        st.subheader(f"🚜 Guia Prático de Manejo na Propriedade")
-        col_op1, col_op2, col_op3 = st.columns(3)
-
-        with col_op1:
-            st.markdown("""
-            <div class="card-lavoura">
-                <h4>🌾 Lavouras & Hortifrúti</h4>
-                <ul>
-                    <li><b>Pulverização:</b> Suspender se vento > 10 km/h ou umidade < 50%.</li>
-                    <li><b>Adubação:</b> Não aplicar ureia antes de tempestades.</li>
-                    <li><b>Drenagem:</b> Desobstruir valas nas lavouras.</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
-
-        with col_op2:
-            st.markdown("""
-            <div class="card-pecuaria">
-                <h4>🐄 Pecuária & Leite</h4>
-                <ul>
-                    <li><b>Estresse Térmico:</b> Ligar aspersores 30 min antes da ordenha.</li>
-                    <li><b>Descargas Elétricas:</b> Afastar gado de cercas de arame.</li>
-                    <li><b>Alimentação:</b> Garantir trato coberto.</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
-
-        with col_op3:
-            st.markdown("""
-            <div class="card-infra">
-                <h4>🚜 Máquinas & Galpões</h4>
-                <ul>
-                    <li><b>Energia:</b> Testar gerador para resfriadores de leite.</li>
-                    <li><b>Insumos:</b> Manter sacarias em pallets elevados.</li>
-                    <li><b>Estruturas:</b> Ancorar lonas e fardos.</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
+    # 1. Parecer Técnico
+    st.subheader(f"🤖 Parecer Técnico Agroclimático — {municipio_sel}")
+    parecer_ia = gerar_diagnostico_gemini(municipio_sel, chuva_acum_7, max_temp, max_vento)
+    st.info(parecer_ia)
 
     st.markdown("---")
 
-    # Mapa Interativo com Camada Google Maps
+    # 2. TABELA DE BLOQUEIOS REAIS (DEFESA CIVIL RS & DAER)
+    st.subheader(f"🛡️ Boletim Oficial de Rodovias e Pontes — {municipio_sel}")
+    df_bloqueios = buscar_ocorrencias_defesa_civil_daer(municipio_sel)
+    st.dataframe(df_bloqueios, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    st.subheader(f"🚜 Guia Prático de Manejo na Propriedade")
+    col_op1, col_op2, col_op3 = st.columns(3)
+
+    with col_op1:
+        st.markdown("""
+        <div class="card-lavoura">
+            <h4>🌾 Lavouras & Hortifrúti</h4>
+            <ul>
+                <li><b>Pulverização:</b> Suspender se vento > 10 km/h ou umidade < 50%.</li>
+                <li><b>Adubação:</b> Não aplicar ureia antes de tempestades.</li>
+                <li><b>Drenagem:</b> Desobstruir valas nas lavouras.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_op2:
+        st.markdown("""
+        <div class="card-pecuaria">
+            <h4>🐄 Pecuária & Leite</h4>
+            <ul>
+                <li><b>Estresse Térmico:</b> Ligar aspersores 30 min antes da ordenha.</li>
+                <li><b>Descargas Elétricas:</b> Afastar gado de cercas de arame.</li>
+                <li><b>Alimentação:</b> Garantir trato coberto.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_op3:
+        st.markdown("""
+        <div class="card-infra">
+            <h4>🚜 Máquinas & Galpões</h4>
+            <ul>
+                <li><b>Energia:</b> Testar gerador para resfriadores de leite.</li>
+                <li><b>Insumos:</b> Manter sacarias em pallets elevados.</li>
+                <li><b>Estruturas:</b> Ancorar lonas e fardos.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Mapa Interativo com Folium
     c_mapa, c_tabela = st.columns([2, 1])
     with c_mapa:
-        st.subheader(f"🗺️ Mapa Tático com Google Maps — {municipio_sel}")
-        m = folium.Map(location=[lat, lon], zoom_start=12, tiles=None)
-        
-        folium.TileLayer(
-            tiles='https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-            attr='Google Maps',
-            name='Google Maps (Ruas/Vias)',
-            overlay=False
-        ).add_to(m)
-        
-        folium.Marker([lat, lon], popup=f"<b>{municipio_sel}</b>").add_to(m)
-        st_folium(m, width="100%", height=350)
+        st.subheader(f"🗺️ Mapa Tático — {municipio_sel}")
+        try:
+            m = folium.Map(location=[lat, lon], zoom_start=12)
+            folium.Marker([lat, lon], popup=f"<b>{municipio_sel}</b>").add_to(m)
+            st_folium(m, width="100%", height=350)
+        except Exception:
+            st.warning("Não foi possível carregar o mapa interativo no momento.")
         
     with c_tabela:
         st.subheader("📅 Previsão (16 Dias)")
-        if dados_16dias and "daily" in dados_16dias:
-            daily = dados_16dias["daily"]
+        if daily:
             df_16 = pd.DataFrame({
                 "Data": daily.get("time", []),
                 "Chuva (mm)": daily.get("precipitation_sum", []),
