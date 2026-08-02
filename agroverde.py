@@ -11,16 +11,15 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS Customizada (Isolada estritamente nos cards/banners para não quebrar o tema global)
+# Estilização CSS Customizada (Visual limpo, alta legibilidade e quebra de linhas)
 st.markdown("""
     <style>
-    /* Força a quebra de linha nas tabelas e listas sem alterar as cores globais */
     div[data-testid="stMarkdownContainer"] p, div[data-testid="stMarkdownContainer"] li {
         word-wrap: break-word !important;
         white-space: normal !important;
     }
 
-    /* CARDS OPERACIONAIS: Fundo claro com texto escuro garantido apenas dentro deles */
+    /* Cards Operacionais */
     .card-lavoura {
         background-color: #f0fdf4 !important;
         border-left: 5px solid #16a34a !important;
@@ -43,7 +42,6 @@ st.markdown("""
         margin-bottom: 12px !important;
     }
 
-    /* Regras de texto aplicadas APENAS dentro dos cards */
     .card-lavoura h4, .card-pecuaria h4, .card-infra h4 {
         color: #0f172a !important;
         margin-top: 0px !important;
@@ -57,7 +55,7 @@ st.markdown("""
         line-height: 1.5 !important;
     }
 
-    /* BANNER EMERGÊNCIA RIO: Texto fixo em tom vinho escuro */
+    /* Banners Especiais */
     .banner-emergencia-rio {
         background-color: #fff1f2 !important;
         border: 2px solid #e11d48 !important;
@@ -75,7 +73,6 @@ st.markdown("""
         font-size: 14px !important;
     }
 
-    /* BANNER SUPER EL NIÑO: Fundo escuro com texto branco fixo */
     .banner-elnino {
         background: linear-gradient(90deg, #7f1d1d 0%, #991b1b 100%) !important;
         padding: 18px !important;
@@ -85,6 +82,11 @@ st.markdown("""
     .banner-elnino h2, .banner-elnino p {
         color: #ffffff !important;
     }
+
+    /* Estilo para Tabela de Logística de Vias */
+    .status-livre { color: #16a34a; font-weight: bold; }
+    .status-atencao { color: #ca8a04; font-weight: bold; }
+    .status-bloqueado { color: #dc2626; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -152,13 +154,14 @@ if comprovante:
     st.sidebar.success("Ação registrada com sucesso! Em análise para incentivo fiscal/crédito.")
 
 # 5. Navegação por Abas
-aba_operacional, aba_sazonal = st.tabs([
-    "⚡ Monitoramento & Ações Práticas (Imediato)",
+aba_operacional, aba_crises, aba_sazonal = st.tabs([
+    "⚡ Monitoramento & Situação Territorial (Imediato)",
+    "🚨 Resposta a Crises & Pós-Evento Extremo",
     "🌋 Tendência Sazonal & Super El Niño (1 a 6 Meses)"
 ])
 
 # =========================================================
-# ABA 1: MONITORAMENTO & AÇÕES PRÁTICAS (IMEDIATO)
+# ABA 1: MONITORAMENTO & SITUAÇÃO TERRITORIAL DO MUNICÍPIO
 # =========================================================
 with aba_operacional:
     if dados_16dias and "current" in dados_16dias:
@@ -174,43 +177,56 @@ with aba_operacional:
     if dados_16dias and "daily" in dados_16dias:
         daily = dados_16dias["daily"]
         chuvas = daily["precipitation_sum"]
-        temp_max = daily["temperature_2m_max"]
-        ventos_max = daily["wind_speed_10m_max"]
-
         chuva_acum_7 = sum(chuvas[:7])
-        chuva_acum_16 = sum(chuvas)
-        max_temp_periodo = max(temp_max)
-        max_vento_periodo = max(ventos_max)
 
-        # Status Fluvial
-        st.subheader(f"🌊 Monitoramento do Nível de Rios — {municipio_sel}")
-        
-        c_rio1, c_rio2, c_rio3 = st.columns(3)
-        
-        # Lógica de detecção do nível do rio
         rio_critico = chuva_acum_7 > 50
-        status_rio = "🚨 CALHA CHEIA / RISCO DE INUNDAÇÃO" if rio_critico else ("🟡 Atenção / Calha Elevada" if chuva_acum_7 > 25 else "🟢 Nível Normal")
-        cota_rio = "+ 2.80 m (Alto)" if rio_critico else ("+ 0.90 m (Moderado)" if chuva_acum_7 > 25 else "- 0.45 m (Normal)")
-        
-        c_rio1.metric("Acumulado 7 Dias", f"{chuva_acum_7:.1f} mm")
-        c_rio2.metric("Status Fluvial", status_rio)
-        c_rio3.metric("Cota Fluvial Est.", cota_rio)
 
-        # 🚨 MÓDULO EMERGENCIAL: AÇÕES EM CASO DE RIO COM CALHA CHEIA
+        # NOVO: PAINEL DE SITUAÇÃO TERRITORIAL E LOGÍSTICA DO MUNICÍPIO
+        st.subheader(f"📍 Diagnóstico Territorial & Logística Rural — {municipio_sel}")
+
+        col_sit1, col_sit2, col_sit3 = st.columns(3)
+
+        status_rio_txt = "🚨 INUNDAÇÃO / CALHA CHEIA" if rio_critico else ("🟡 Calha Elevada" if chuva_acum_7 > 25 else "🟢 Calha Normal")
+        status_vias_txt = "🚨 ESTRADAS BLOQUEADAS / PONTES DANIFICADAS" if rio_critico else ("🟡 Vicinais com Atoleiros" if chuva_acum_7 > 25 else "🟢 Vias Operacionais")
+        status_acesso_txt = "⚠️ RISCO DE ISOLAMENTO RURAL" if rio_critico else "✅ Trafegabilidade Garantida"
+
+        col_sit1.metric("Nível do Rio Principal", status_rio_txt)
+        col_sit2.metric("Malha Rodoviária Rural", status_vias_txt)
+        col_sit3.metric("Acesso a Distritos Rurais", status_acesso_txt)
+
+        st.markdown("---")
+
+        # TABELA DINÂMICA DE MALHA RURAL E INFRAESTRUTURA
+        st.markdown(f"### 🚦 Status das Vias de Escoamento e Pontilhões — {municipio_sel}")
+        
+        if rio_critico:
+            df_vias = pd.DataFrame({
+                "Trecho / Acesso Rural": ["Estrada Principal de Escoamento", "Estradas Vicinais Secundárias", "Pontilhão sobre Rio Principal", "Vias de Acesso às Cooperativas"],
+                "Condição Atual": ["🚨 Parcialmente Submersa", "⚠️ Atoleiros Severos", "⛔ Interditado / Risco Estrutural", "🟡 Tráfego Restrito a Tratores"],
+                "Recomendação Logística": ["Utilizar desvio via RS alta", "Evitar caminhões pesados", "Passagem proibida para veículos", "Escalonar saída da produção"]
+            })
+        else:
+            df_vias = pd.DataFrame({
+                "Trecho / Acesso Rural": ["Estrada Principal de Escoamento", "Estradas Vicinais Secundárias", "Pontilhão sobre Rio Principal", "Vias de Acesso às Cooperativas"],
+                "Condição Atual": ["🟢 Trafegável", "🟢 Trafegável", "🟢 Liberado", "🟢 Trafegável"],
+                "Recomendação Logística": ["Tráfego normal", "Manutenção preventiva padrão", "Tráfego normal", "Tráfego normal"]
+            })
+
+        st.dataframe(df_vias, use_container_width=True, hide_index=True)
+
+        # PROTOCOLO SE RIO E ESTRADAS ESTIVEREM CRÍTICOS
         if rio_critico:
             st.markdown("""
             <div class="banner-emergencia-rio">
-                <h4>🚨 PROTOCOLO DE EMERGÊNCIA: RIO COM CALHA CHEIA / TRANSBORDAMENTO IMINENTE</h4>
-                <p><b>Diretrizes de Ação Imediata para a Propriedade Rural (SEAPI / Defesa Civil):</b></p>
+                <h4>🚨 PROTOCOLO DE EMERGÊNCIA TERRITORIAL ({municipio_sel})</h4>
+                <p><b>Ações Imediatas devido a Inundações e Bloqueio de Vias:</b></p>
                 <ul>
-                    <li><b>Pecuária:</b> Retirar imediatamente todo o rebanho das áreas de várzea e piquetes ribeirinhos. Deslocar o gado para campos altos de refúgio.</li>
-                    <li><b>Maquinários:</b> Retirar tratores, colheitadeiras e implementos das baixadas e de perto de pontes rurais. Estacionar em locais elevados e firmes.</li>
-                    <li><b>Grãos e Insumos:</b> Elevar sacarias de sementes, rações e adubos em pelo menos 1 metro de altura ou transferir para silos elevados/centrais.</li>
-                    <li><b>Bombas e Irrigação:</b> Desligar e retirar os motores de captação de água das margens do rio antes da chegada do pico da cheia.</li>
-                    <li><b>Segurança Pessoal:</b> Não tentar atravessar pontes submersas ou vados com tratores/veículos. Emergência: Ligar 199 (Defesa Civil).</li>
+                    <li><b>Pontes e Passagens:</b> Não force a travessia de pontilhões cobertos por água. Riscos de colapso de cabeceira.</li>
+                    <li><b>Logística do Leite:</b> Acione os tanques comunitários da região mais próxima antes do fechamento total dos acessos.</li>
+                    <li><b>Gado em Várzea:</b> Remova imediatamente o rebanho para os potreiros mais altos mapeados na propriedade.</li>
                 </ul>
             </div>
-            """, unsafe_allow_html=True)
+            """.format(municipio_sel=municipio_sel), unsafe_allow_html=True)
 
         st.markdown("---")
 
@@ -281,7 +297,69 @@ with aba_operacional:
             st.dataframe(df_16, use_container_width=True, height=330, hide_index=True)
 
 # =========================================================
-# ABA 2: TENDÊNCIA SAZONAL & SUPER EL NIÑO
+# ABA 2: RESPOSTA A CRISES & PÓS-EVENTO EXTREMO
+# =========================================================
+with aba_crises:
+    st.subheader(f"🚑 Central de Resposta Imediata & Ações Pós-Evento Extremo — {municipio_sel}")
+    st.info("💡 **Guia de Campo SEAPI/EMATER:** Protocolos práticos para mitigar perdas e recuperar a produção **DURANTE** e **APÓS** eventos severos.")
+
+    with st.expander("🌊 **1. Durante & Pós-Inundação (Pontes/Estradas Obstruídas ou Destruídas)**", expanded=True):
+        col_in1, col_in2 = st.columns(2)
+        with col_in1:
+            st.markdown("#### 🚜 Durante a Enchente / Isolamento Logístico")
+            st.markdown("""
+            * **Preservação de Leite:** Se o caminhão recolhedor não chegar por pontes destruídas, acionar resfriamento contínuo ou realizar pasteurização/queijaria artesanal emergencial.
+            * **Racionamento de Ração:** Reduzir concentrado e manter volumoso seco para animais isolados em áreas altas.
+            * **Logística Emergencial:** Mapear rotas vicinais alternativas e comunicar o escritório da EMATER/Prefeitura sobre trechos cortados.
+            """)
+        with col_in2:
+            st.markdown("#### 🛠️ Pós-Recuo das Águas (Recuperação)")
+            st.markdown("""
+            * **Sanidade Animal:** Vacinar rebanho contra **leptospirose e clostridioses** (águas de enchente propagam bactérias no solo/pasto).
+            * **Recuperação de Solo:** Não trafegar com tratores pesados em solo encharcado (evitar compactação severa). Aplicar calcário/gesso assim que secar.
+            * **Desinfecção de Instalações:** Lavar salas de ordenha e comedouros com água sanitária/cloro antes do retorno dos animais.
+            """)
+
+    with st.expander("💨 **2. Pós-Vendaval (Telhados Destruídos, Rede Elétrica Caída & Destroços)**"):
+        col_vd1, col_vd2 = st.columns(2)
+        with col_vd1:
+            st.markdown("#### ⚡ Segurança & Infraestrutura")
+            st.markdown("""
+            * **Cabo Partido:** Tratar todo fio caído no chão como energizado. Isolar a área e acionar a concessionária de energia (RGE/CEEE).
+            * **Cobertura Emergencial:** Cobrir silos-bag rasgados ou galpões sem telha com lonas duplas reforçadas para não perder grãos/insumos.
+            * **Laudo Fotográfico:** Fotografar todos os estragos na estrutura antes da remoção dos destroços (necessário para seguro rural e laudo SEAPI).
+            """)
+        with col_vd2:
+            st.markdown("#### 🐄 Bem-Estar & Manejo")
+            st.markdown("""
+            * **Manejo de Sombreamento:** Improvisar sombrite provisório se estruturas de sombra da pecuária forem destruídas.
+            * **Inspeção de Cercas:** Fazer varredura rápida no perímetro para evitar fuga de gado para estradas.
+            """)
+
+    with st.expander("🧊 **3. Pós-Granizo (Lavouras Danificadas & Estufas Rasgadas)**"):
+        col_gr1, col_gr2 = st.columns(2)
+        with col_gr1:
+            st.markdown("#### 🌾 Recuperação de Lavouras & Hortas")
+            st.markdown("""
+            * **Aplicação de Fungicida Cúprico:** Pulverizar fungicida à base de cobre em até **48 horas** após o granizo. As feridas nas folhas são portas de entrada para fungos/bactérias.
+            * **Bioestimulantes:** Aplicar aminoácidos e extratos de algas para acelerar a brotação de folhas remanescentes.
+            * **Avaliação de Replantio:** Se a desfolha for $> 80\%$ em fases iniciais, acionar a EMATER para laudo de replantio imediato.
+            """)
+        with col_gr2:
+            st.markdown("#### 🍇 Fruticultura & Estufas")
+            st.markdown("""
+            * **Poda de Limpeza:** Eliminar ramos dilacerados para evitar necrose do lenho na fruticultura (uva, maçã, pêssego).
+            * **Troca de Filmes:** Substituir lonas de estufas rasgadas antes da entrada de umidade noturna.
+            """)
+
+    with st.expander("☀️ **4. Pós-Estiagem Severa (Solo Defrontado & Pastagem Degradada)**"):
+        st.markdown("""
+        * **Reativação Biológica do Solo:** Não adubar com nitrogênio sintético pesado imediatamente. Utilizar **biocarvão (biochar)** e matéria orgânica para reter a primeira chuva.
+        * **Dessalinização / Limpeza de Açudes:** Aproveitar o nível baixo de reservatórios para realizar a dragagem da lama e ampliação da capacidade de armazenamento.
+        """)
+
+# =========================================================
+# ABA 3: TENDÊNCIA SAZONAL & SUPER EL NIÑO
 # =========================================================
 with aba_sazonal:
     st.markdown("""
