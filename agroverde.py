@@ -212,7 +212,7 @@ if comprovante:
 aba_operacional, aba_crises, aba_sazonal = st.tabs([
     "⚡ 1. Diagnóstico & Estradas",
     "🚨 2. Resposta a Crises",
-    "🌋 3. Projeção Sazonal"
+    "os 3. Projeção Sazonal"
 ])
 
 # =========================================================
@@ -229,11 +229,12 @@ with aba_operacional:
 
     st.markdown("---")
 
-    # Extração ultra segura de dados diários
+    # Extração ultra segura de dados diários (filtrando None de todas as listas)
     daily = dados_16dias.get("daily", {}) if dados_16dias else {}
-    chuvas = daily.get("precipitation_sum") or [0.0]
-    temp_max_list = daily.get("temperature_2m_max") or [25.0]
-    vento_max_list = daily.get("wind_speed_10m_max") or [10.0]
+    
+    chuvas = [v for v in (daily.get("precipitation_sum") or []) if v is not None]
+    temp_max_list = [v for v in (daily.get("temperature_2m_max") or []) if v is not None]
+    vento_max_list = [v for v in (daily.get("wind_speed_10m_max") or []) if v is not None]
 
     chuva_acum_7 = float(sum(chuvas[:7])) if chuvas else 0.0
     max_temp = float(max(temp_max_list)) if temp_max_list else 25.0
@@ -354,4 +355,4 @@ with aba_sazonal:
     col_s1.metric("Anomalia de Chuva", "+45%", "Super El Niño")
     col_s2.metric("Risco de Enchentes", "CRÍTICO", "Bacias em Alerta")
     col_s3.metric("Contingência Solo", "Ativado", "Fundo FDR")
-    
+            
