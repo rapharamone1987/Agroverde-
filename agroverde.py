@@ -458,10 +458,4 @@ with aba_sazonal:
         2. 🌾 **Impactos e Riscos nas Culturas Locais:** Avaliação para fruticultura, horticultura, grãos e agroindústria local.
         3. 🛡️ **Plano Diretor de Resiliência Rural:** Recomendações técnicas para conservação de encostas, proteção de acessos, contenção de erosão e seguro rural.
         """
-                with st.spinner(f"Processando relatório sazonal com Groq para {municipio_sel}..."):
-            st.session_state["parecer_sazonal"] = analisar_dados_com_groq(prompt_sazonal)
-
-    if st.session_state["parecer_sazonal"]:
-        st.markdown(st.session_state["parecer_sazonal"])
-    else:
-        st.info("💡 **Clique no botão vermelho acima** para gerar a projeção climatológica sazonal estendida da IA para os próximos trimestres.")
+        with st.spinner(f"Processa
