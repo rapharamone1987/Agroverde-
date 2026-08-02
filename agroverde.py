@@ -3,6 +3,7 @@ import folium
 from streamlit_folium import st_folium
 import pandas as pd
 import requests
+from bs4 import BeautifulSoup
 import os
 
 # 1. Configuração da Página
@@ -117,45 +118,80 @@ def analisar_dados_com_groq(prompt_contexto):
     except Exception as e:
         return f"⚠️ Erro de conexão com a API do Groq: {e}"
 
-# 3. CAMADA DE DADOS: CONSULTA CRBM COM GARIMPO FLEXÍVEL
+# 3. RASPAGEM REAL (WEB SCRAPING) NO SITE OFICIAL DO CRBM / BRIGADA MILITAR
 
 @st.cache_data(ttl=300)
 def buscar_dados_bloqueios_crbm(nome_municipio):
-    url_crbm = "https://servicos.daer.rs.gov.br/api/bloqueios"
+    termo = nome_municipio.strip().lower()
     ocorrencias = []
-    termo_busca = nome_municipio.strip().lower()
     
-    try:
-        res = requests.get(url_crbm, timeout=6)
-        if res.status_code == 200:
-            dados = res.json()
-            if isinstance(dados, list):
-                for item in dados:
-                    mun = str(item.get("municipio", "")).lower()
-                    rod = str(item.get("rodovia", "")).lower()
-                    causa = str(item.get("causa", "")).lower()
-                    
-                    # Busca flexível por município, causa ou rodovia específica (ex: VRS-843 em Feliz)
-                    if termo_busca in mun or termo_busca in causa or (termo_busca == "feliz" and "843" in rod):
-                        ocorrencias.append({
-                            "Rodovia": item.get("rodovia", "N/D"),
-                            "Km": item.get("km", "N/D"),
-                            "Situação": item.get("status", "Bloqueio Total"),
-                            "Causa Registrada": item.get("causa", "Interdição de Estrutura / Ponte"),
-                            "Última Atualização": item.get("data_atualizacao", "Recente")
-                        })
-    except Exception:
-        pass
+    # URLs oficiais onde o CRBM publica o boletim de rodovias estaduais
+    urls_crbm = [
+        "https://www.brigadamilitar.rs.gov.br/cprvbm",
+        "https://estado.rs.gov.br/atualizadas-informacoes-sobre-situacao-de-rodovias-e-pontes-no-rio-grande-do-sul"
+    ]
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 
-    # Garantia de segurança para a ponte da VRS-843 em Feliz
-    if termo_busca == "feliz" and not ocorrencias:
-        ocorrencias.append({
-            "Rodovia": "VRS-843",
-            "Km": "Km 0",
-            "Situação": "Bloqueio Total",
-            "Causa Registrada": "Interdição / Danos na Ponte sobre o Rio Caí",
-            "Última Atualização": "Confirmado via Boletim CRBM"
-        })
+    for url in urls_crbm:
+        try:
+            res = requests.get(url, headers=headers, timeout=6)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, "html.parser")
+                
+                # Procura em tabelas no site
+                for tabela in soup.find_all("table"):
+                    for linha in tabela.find_all("tr"):
+                        colunas = [c.get_text(strip=True) for c in linha.find_all(["td", "th"])]
+                        texto_linha = " ".join(colunas).lower()
+                        if termo in texto_linha:
+                            ocorrencias.append({
+                                "Rodovia / Trecho": colunas[0] if len(colunas) > 0 else "Rodovia Estadual",
+                                "Local / Km": colunas[1] if len(colunas) > 1 else "N/D",
+                                "Situação": colunas[2] if len(colunas) > 2 else "Bloqueado",
+                                "Detalhe do Boletim CRBM": " ".join(colunas[3:]) if len(colunas) > 3 else texto_linha,
+                                "Fonte": "Site Oficial CRBM / BM-RS"
+                            })
+                
+                # Procura em parágrafos e listas (p, li)
+                if not ocorrencias:
+                    elementos = soup.find_all(["li", "p"])
+                    for el in elementos:
+                        texto = el.get_text(strip=True)
+                        if termo in texto.lower() and ("km" in texto.lower() or "ers" in texto.lower() or "vrs" in texto.lower() or "ponte" in texto.lower()):
+                            ocorrencias.append({
+                                "Rodovia / Trecho": "Informativo de Pista",
+                                "Local / Km": nome_municipio,
+                                "Situação": "Bloqueio / Alerta de Pista",
+                                "Detalhe do Boletim CRBM": texto,
+                                "Fonte": "Boletim CRBM Web"
+                            })
+            if ocorrencias:
+                break
+        except Exception:
+            continue
+
+    # Fallback via API caso o HTML não retorne tabela estruturada no momento
+    if not ocorrencias:
+        try:
+            res_api = requests.get("https://servicos.daer.rs.gov.br/api/bloqueios", headers=headers, timeout=5)
+            if res_api.status_code == 200:
+                dados = res_api.json()
+                if isinstance(dados, list):
+                    for item in dados:
+                        texto_item = " ".join([str(v).lower() for v in item.values()])
+                        if termo in texto_item:
+                            ocorrencias.append({
+                                "Rodovia / Trecho": item.get("rodovia") or item.get("rs") or "N/D",
+                                "Local / Km": item.get("km") or "N/D",
+                                "Situação": item.get("status") or "Interditado",
+                                "Detalhe do Boletim CRBM": item.get("causa") or item.get("observacao") or "Interdição de pista",
+                                "Fonte": "Base Oficial DAER/CRBM"
+                            })
+        except Exception:
+            pass
 
     return ocorrencias
 
@@ -274,16 +310,16 @@ with aba_operacional:
         - Precipitação Acumulada em 7 Dias: {chuva_acum_7:.1f} mm
         - Pico Térmico Previsto: {max_temp:.1f} °C
         - Vento Máximo Previsto: {max_vento:.1f} km/h
-        - Bloqueios Ativos/Interdições Registradas: {len(bloqueios_reais)} registro(s).
+        - Ocorrências Encontradas no Site do CRBM: {len(bloqueios_reais)} registro(s).
 
-        Considere a logística de escoamento rural do município de {municipio_sel}, incluindo travessias de pontes vicinais e rios locais (ex: Rio Caí).
+        Considere a logística de escoamento rural de {municipio_sel}, incluindo a malha viária do Vale do Caí e travessias rurais.
 
         Estruture a resposta de forma direta em 3 seções:
         1. 🌾 **Impacto em Lavouras e Solo:** Janela ideal de pulverização e drenagem.
         2. 🐄 **Manejo Pecuário e Leite:** Controle de estresse térmico e acesso aos tambos.
-        3. 🚜 **Logística e Infraestrutura Rural:** Rotas alternativas para escoamento de safras e leite em caso de dano a estruturas/pontes.
+        3. 🚜 **Logística e Infraestrutura Rural:** Rotas alternativas e escoamento em caso de danos em estradas/pontes.
         """
-        with st.spinner("Sintetizando parecer ultra-rápido com Groq (Llama 3.3)..."):
+        with st.spinner("Sintetizando parecer com Groq (Llama 3.3)..."):
             st.session_state["parecer_curto"] = analisar_dados_com_groq(prompt_curto_prazo)
 
     if st.session_state["parecer_curto"]:
@@ -293,13 +329,14 @@ with aba_operacional:
 
     st.markdown("---")
 
-    st.subheader(f"🛡️ Bloqueios Rodoviários Registrados no CRBM — {municipio_sel}")
+    st.subheader(f"🛡️ Bloqueios Extraídos do Site Oficial do CRBM (BM-RS) — {municipio_sel}")
     
     if bloqueios_reais:
-        st.warning(f"🚨 Atualmente existem **{len(bloqueios_reais)} interdição(ões) ativa(s)** registradas para {municipio_sel}:")
+        st.warning(f"🚨 Encontrado(s) **{len(bloqueios_reais)} registro(s) de bloqueio/alerta** no site do Comando Rodoviário da BM para **{municipio_sel}**:")
         st.dataframe(pd.DataFrame(bloqueios_reais), use_container_width=True, hide_index=True)
     else:
-        st.success(f"🟢 **Nenhum bloqueio rodoviário ativo** registrado no boletim oficial do Comando de Polícia Rodoviária da BM para **{municipio_sel}**.")
+        st.success(f"🟢 **Nenhum bloqueio ou alerta ativo** encontrado no site oficial do CRBM para **{municipio_sel}** neste momento.")
+        st.caption("Fonte das informações: Portal do Comando Rodoviário da Brigada Militar (CRBM/BM-RS).")
 
     st.markdown("---")
 
@@ -418,18 +455,8 @@ with aba_sazonal:
         prompt_sazonal = f"""
         Elabore um PROGNÓSTICO SAZONAL DE RESILIÊNCIA CLIMÁTICA completo, técnico e aprofundado para o município de {municipio_sel} (RS) (Lat: {lat}, Lon: {lon}).
 
-        Considere a vocação agrícola e pecuária local (ex: Vale do Caí, fruticultura, horticultura e agroindústria) e a dinâmica climática do Sul do Brasil.
+        Considere a vocação agrícola e pecuária local e a dinâmica climática do Sul do Brasil.
 
         Estruture o relatório exatamente nestas 3 seções:
         1. 📅 **Projeção Climatológica Trimestral ({municipio_sel}):** Tendências de precipitação acumulada, anomalias de temperatura e riscos de enxurradas nas bacias hidrográficas locais para os próximos 3 a 6 meses.
-        2. 🌾 **Impactos e Riscos nas Culturas Locais:** Avaliação para fruticultura, horticultura, grãos e agroindústria local.
-        3. 🛡️ **Plano Diretor de Resiliência Rural:** Recomendações técnicas para conservação de encostas, proteção de pontes/Acessos, contenção de erosão e seguro rural.
-        """
-        with st.spinner(f"Processando relatório sazonal com Groq para {municipio_sel}..."):
-            st.session_state["parecer_sazonal"] = analisar_dados_com_groq(prompt_sazonal)
-
-    if st.session_state["parecer_sazonal"]:
-        st.markdown(st.session_state["parecer_sazonal"])
-    else:
-        st.info("💡 **Clique no botão vermelho acima** para gerar a projeção climatológica sazonal estendida da IA para os próximos trimestres.")
-        
+        2. 🌾 **Impactos e Riscos nas Culturas Locais:** Avaliação para fruticultura, hor
