@@ -75,7 +75,7 @@ st.title("🌾 Agro Resiliência Climática RS")
 st.caption("Secretaria da Agricultura, Pecuária, Produção Sustentável e Irrigação (SEAPI-RS)")
 st.markdown("---")
 
-# 2. Leitura de Chave e Engine do Gemini (REST API)
+# 2. Leitura de Chave e Engine do Gemini
 def obter_gemini_api_key():
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key and hasattr(st, "secrets"):
@@ -85,28 +85,34 @@ def obter_gemini_api_key():
 API_KEY_GEMINI = obter_gemini_api_key()
 
 def analisar_dados_com_gemini(prompt_contexto):
-    """Envia os dados e instruções para o Gemini gerar diagnósticos profundos."""
+    """Envia os dados para o Gemini via REST API direta de forma segura."""
     if not API_KEY_GEMINI:
-        return None
+        return "⚠️ Chave GEMINI_API_KEY não foi encontrada nos Secrets do Streamlit."
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY_GEMINI}"
     headers = {"Content-Type": "application/json"}
     payload = {"contents": [{"parts": [{"text": prompt_contexto}]}]}
     
+    # Tentativa no modelo gemini-2.5-flash
+    url_25 = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY_GEMINI}"
     try:
-        res = requests.post(url, json=payload, headers=headers, timeout=15)
+        res = requests.post(url_25, json=payload, headers=headers, timeout=15)
         if res.status_code == 200:
             return res.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            url_fb = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY_GEMINI}"
-            res_fb = requests.post(url_fb, json=payload, headers=headers, timeout=15)
-            if res_fb.status_code == 200:
-                return res_fb.json()['candidates'][0]['content']['parts'][0]['text']
-            return None
     except Exception:
-        return None
+        pass
 
-# 3. CAMADA DE DADOS DETERMINÍSTICA (PYTHON FETCH)
+    # Fallback para gemini-1.5-flash / gemini-2.0-flash
+    url_fb = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY_GEMINI}"
+    try:
+        res_fb = requests.post(url_fb, json=payload, headers=headers, timeout=15)
+        if res_fb.status_code == 200:
+            return res_fb.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            return f"⚠️ Erro no processamento da IA (Código HTTP {res_fb.status_code}): {res_fb.text}"
+    except Exception as e:
+        return f"⚠️ Erro de conexão com o serviço Gemini: {e}"
+
+# 3. CAMADA DE DADOS DETERMINÍSTICA (PYTHON)
 
 @st.cache_data(ttl=600)
 def buscar_dados_bloqueios_crbm(nome_municipio):
@@ -169,6 +175,14 @@ def buscar_clima_avancado(lat, lon):
     except Exception:
         return None
 
+# Inicialização segura das variáveis no Session State
+if "parecer_curto" not in st.session_state:
+    st.session_state["parecer_curto"] = None
+if "parecer_sazonal" not in st.session_state:
+    st.session_state["parecer_sazonal"] = None
+if "ultimo_municipio" not in st.session_state:
+    st.session_state["ultimo_municipio"] = ""
+
 # Sidebar
 st.sidebar.header("🔍 Painel de Controle")
 
@@ -179,8 +193,8 @@ municipio_sel = st.sidebar.selectbox(
     index=lista_municipios.index("Osório") if "Osório" in lista_municipios else 0
 )
 
-# Limpa o cache das análises se trocar de município
-if "ultimo_municipio" not in st.session_state or st.session_state["ultimo_municipio"] != municipio_sel:
+# Reseta o estado apenas se trocar de município
+if st.session_state["ultimo_municipio"] != municipio_sel:
     st.session_state["ultimo_municipio"] = municipio_sel
     st.session_state["parecer_curto"] = None
     st.session_state["parecer_sazonal"] = None
@@ -191,9 +205,9 @@ bloqueios_reais = buscar_dados_bloqueios_crbm(municipio_sel)
 
 st.sidebar.markdown("---")
 if API_KEY_GEMINI:
-    st.sidebar.success("🤖 Google Gemini (IA): **Pronto para Análise**")
+    st.sidebar.success("🤖 Google Gemini (IA): **Conectado**")
 else:
-    st.sidebar.warning("🤖 Google Gemini: **Modo Local**")
+    st.sidebar.error("🤖 Google Gemini: **Chave Não Encontrada**")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📲 Reportar Ocorrência de Campo")
@@ -205,7 +219,7 @@ if comprovante:
 aba_operacional, aba_crises, aba_sazonal = st.tabs([
     "⚡ 1. Diagnóstico Operacional & Malha Viária",
     "🚨 2. Resposta a Crises & Contingência",
-    "os 3. Prognóstico Sazonal & Eventos Extremos"
+    "🌋 3. Prognóstico Sazonal & Eventos Extremos"
 ])
 
 # =========================================================
@@ -233,26 +247,26 @@ with aba_operacional:
 
     st.subheader(f"🤖 Parecer Técnico Agroclimático — {municipio_sel}")
     
-    col_btn1, col_info1 = st.columns([1, 2])
-    with col_btn1:
-        if st.button("🧠 Gerar / Atualizar Parecer Técnico (IA)", use_container_width=True):
-            prompt_curto_prazo = f"""
-            Você é um Engenheiro Agrônomo sênior da SEAPI-RS.
-            Elabore um parecer operacional extremamente detalhado e prático para o município de {municipio_sel} (RS):
-            - Chuva Acumulada em 7 Dias: {chuva_acum_7:.1f} mm
-            - Pico Térmico: {max_temp:.1f} °C
-            - Vento Máximo: {max_vento:.1f} km/h
-            - Interdições no CRBM: {len(bloqueios_reais)} registro(s).
+    # Disparo e armazenamento explícito do clique
+    if st.button("🧠 Gerar Parecer Técnico (IA)", key="btn_parecer_curto"):
+        prompt_curto_prazo = f"""
+        Você é um Engenheiro Agrônomo sênior da SEAPI-RS.
+        Elabore um parecer operacional prático para o município de {municipio_sel} (RS):
+        - Chuva Acumulada em 7 Dias: {chuva_acum_7:.1f} mm
+        - Pico Térmico: {max_temp:.1f} °C
+        - Vento Máximo: {max_vento:.1f} km/h
+        - Interdições no CRBM: {len(bloqueios_reais)} registro(s).
 
-            Estruture a resposta em 3 seções bem aprofundadas:
-            1. 🌾 **Impacto em Lavouras e Solo:** Janela exata de pulverização, riscos de lixiviação de adubo e drenagem.
-            2. 🐄 **Manejo Pecuário e Leite:** Controle de estresse térmico, sanidade do casco, acesso aos tambos e manejo de barro.
-            3. 🚜 **Logística e Infraestrutura Rural:** Estratégias para tráfego de maquinário pesados e conservação de sacarias/feno.
-            """
-            with st.spinner("Sintetizando parecer com o modelo Gemini..."):
-                st.session_state["parecer_curto"] = analisar_dados_com_gemini(prompt_curto_prazo)
+        Estruture em 3 seções:
+        1. 🌾 **Impacto em Lavouras e Solo:** Janela de pulverização e drenagem.
+        2. 🐄 **Manejo Pecuário e Leite:** Estresse térmico, sanidade e acesso a tambos.
+        3. 🚜 **Logística e Infraestrutura:** Proteção de máquinas e insumos.
+        """
+        with st.spinner("Consultando inteligência artificial Gemini..."):
+            st.session_state["parecer_curto"] = analisar_dados_com_gemini(prompt_curto_prazo)
 
-    if st.session_state.get("parecer_curto"):
+    # Exibe o resultado persistido
+    if st.session_state["parecer_curto"]:
         st.info(st.session_state["parecer_curto"])
     else:
         st.caption("👈 Clique no botão acima para acionar a Inteligência Artificial e gerar uma análise detalhada baseada nos dados climáticos atuais.")
@@ -380,23 +394,25 @@ with aba_sazonal:
 
     st.subheader(f"📊 Relatório Agrometeorológico Sazonal de Longo Prazo — {municipio_sel}")
     
-    if st.button("🌋 Gerar Relatório Completo de Resiliência Sazonal (IA)", type="primary", use_container_width=True):
+    # Disparo e armazenamento do clique
+    if st.button("🌋 Gerar Relatório Completo de Resiliência Sazonal (IA)", key="btn_parecer_sazonal", type="primary"):
         prompt_sazonal = f"""
         Você é um especialista sênior em Climatologia Agrícola e Economia Rural da SEAPI-RS.
-        Elabore um PROGNÓSTICO SAZONAL DE RESILIÊNCIA CLIMÁTICA extremamente abrangente, técnico e detalhado para o município de {municipio_sel} (RS) (Lat: {lat}, Lon: {lon}).
+        Elabore um PROGNÓSTICO SAZONAL DE RESILIÊNCIA CLIMÁTICA detalhado para o município de {municipio_sel} (RS) (Lat: {lat}, Lon: {lon}).
 
-        Considere o histórico agrícola e geográfico da região, além das tendências de anomalias hídricas e térmicas no Sul do Brasil.
+        Considere o histórico agrícola da região e tendências de anomalias no Sul do Brasil.
 
-        Estruture o relatório minunciosamente nestes 3 tópicos:
-        1. 📅 **Projeção Climatológica Trimestral ({municipio_sel}):** Tendências de volumes acumulados, anomalias de temperatura e risco de eventos extremos (enxurradas, estiagens curtas ou granizo) para os próximos 3 a 6 meses.
-        2. 🌾 **Impactos e Riscos nas Culturas Locais:** Avaliação específica para a vocação agrícola predominante deste município (grãos, pecuária de leite/corte, horticultura ou fruticultura).
-        3. 🛡️ **Plano Diretor de Resiliência Rural:** Recomendações táticas para conservação do solo, manejo de irrigação/reserva de água, proteção de pastagens e ações de mitigação financeira/seguro rural.
+        Estruture o relatório nestes 3 tópicos:
+        1. 📅 **Projeção Climatológica Trimestral ({municipio_sel}):** Tendências de precipitação acumulada e riscos de eventos extremos para 3 a 6 meses.
+        2. 🌾 **Impactos e Riscos nas Culturas Locais:** Avaliação específica para grãos, pecuária ou fruticultura local.
+        3. 🛡️ **Plano Diretor de Resiliência Rural:** Conservação do solo, manejo de água, pastagens e seguro rural.
         """
         with st.spinner(f"Processando modelo de inteligência sazonal para {municipio_sel}..."):
             st.session_state["parecer_sazonal"] = analisar_dados_com_gemini(prompt_sazonal)
 
-    if st.session_state.get("parecer_sazonal"):
+    # Exibe o resultado persistido
+    if st.session_state["parecer_sazonal"]:
         st.markdown(st.session_state["parecer_sazonal"])
     else:
         st.info("💡 **Clique no botão vermelho acima** para gerar a projeção climatológica sazonal estendida da IA para os próximos trimestres.")
-        
+    
