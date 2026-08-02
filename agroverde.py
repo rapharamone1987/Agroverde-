@@ -12,7 +12,7 @@ try:
 except ImportError:
     GENAI_DISPONIVEL = False
 
-# Configuração da Página
+# 1. Configuração da Página
 st.set_page_config(
     page_title="AgroVerde RS - Gêmeo Digital",
     page_icon="🌾",
@@ -82,13 +82,19 @@ st.title("🌾 AgroVerde RS — Gêmeo Digital & Inteligência Climática")
 st.caption("Secretaria da Agricultura, Pecuária, Produção Sustentável e Irrigação (SEAPI-RS)")
 st.markdown("---")
 
-# Inicialização da API do Google Gemini
+# 2. Inicialização da API do Google Gemini
 @st.cache_resource
 def iniciar_cliente_gemini():
     if not GENAI_DISPONIVEL:
         return None
     try:
-        api_key = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
+        # Busca por GEMINI_API_KEY ou GOOGLE_API_KEY nos Secrets / Ambiente
+        api_key = (
+            os.environ.get("GEMINI_API_KEY") 
+            or os.environ.get("GOOGLE_API_KEY")
+            or st.secrets.get("GEMINI_API_KEY", None) 
+            or st.secrets.get("GOOGLE_API_KEY", None)
+        )
         if api_key:
             return genai.Client(api_key=api_key)
     except Exception:
@@ -97,7 +103,7 @@ def iniciar_cliente_gemini():
 
 client_gemini = iniciar_cliente_gemini()
 
-# CONSULTA REAL DE BLOQUEIOS DO CRBM / DAER
+# 3. CONSULTA EM TEMPO REAL DE BLOQUEIOS DO CRBM / DAER
 @st.cache_data(ttl=600)
 def consultar_bloqueios_crbm_reais(nome_municipio):
     url_crbm = "https://servicos.daer.rs.gov.br/api/bloqueios"
@@ -123,22 +129,22 @@ def consultar_bloqueios_crbm_reais(nome_municipio):
 
     return ocorrencias
 
-# AGENTE INTELIGENTE: PARECER DE CURTO PRAZO
+# 4. AGENTE INTELIGENTE: PARECER DE CURTO PRAZO
 def gerar_diagnostico_curto_prazo(municipio, chuva, temp, vento):
     if not client_gemini:
-        return f"💡 **Alerta Operacional ({municipio}):** Chuva acumulada em 7 dias prevista em {chuva:.1f} mm. Verifique valas de drenagem nas lavouras e mantenha animais em áreas elevadas."
+        return f"💡 **Alerta Operacional ({municipio}):** Acumulado de chuva de {chuva:.1f} mm previstos para os próximos 7 dias. Verifique os canais de drenagem nas lavouras e mantenha animais em áreas elevadas."
     
     prompt = f"""
-    Atue como Engenheiro Agrônomo da SEAPI-RS.
+    Atue como Engenheiro Agrônomo especialista da SEAPI-RS.
     Elabore uma análise operacional de curto prazo para o município de {municipio} (RS):
     - Chuva Prevista (7 Dias): {chuva:.1f} mm
     - Pico Térmico: {temp:.1f} °C
     - Rajada de Vento: {vento:.1f} km/h
 
     Responda em 3 tópicos objetivos:
-    1. 🌾 **Impacto Agrícola:** Risco de erosão e janela de defensivos.
-    2. 🐄 **Manejo Pecuário:** Cuidados contra estresse térmico ou barro em tambos.
-    3. 🚜 **Estrutura & Logística:** Cuidados com feno, silos e máquinas.
+    1. 🌾 **Impacto Agrícola:** Risco de erosão e janela ideal para aplicação de defensivos/insumos.
+    2. 🐄 **Manejo Pecuário:** Cuidados contra estresse térmico ou barro em tambos/ordenha.
+    3. 🚜 **Estrutura & Logística:** Cuidados com armazenamento de feno, silos e proteção de máquinas.
     """
     try:
         response = client_gemini.models.generate_content(
@@ -146,19 +152,19 @@ def gerar_diagnostico_curto_prazo(municipio, chuva, temp, vento):
             contents=prompt,
         )
         return response.text
-    except Exception:
-        return f"💡 **Alerta Operacional ({municipio}):** Acumulado de {chuva:.1f} mm. Atentar para drenagem em lavouras baixas."
+    except Exception as e:
+        return f"💡 **Alerta Operacional ({municipio}):** Acumulado de {chuva:.1f} mm previstos. Atentar para drenagem em lavouras baixas. (Erro da IA: {e})"
 
-# AGENTE INTELIGENTE: PROGNÓSTICO SAZONAL DE MÉDIO/LONGO PRAZO (REAL)
+# 5. AGENTE INTELIGENTE: PROGNÓSTICO SAZONAL DINÂMICO DE MÉDIO/LONGO PRAZO
 def gerar_prognostico_sazonal_gemini(municipio, lat, lon):
     if not client_gemini:
-        return "⚠️ Configure a chave `GEMINI_API_KEY` para gerar o prognóstico sazonal detalhado por Inteligência Artificial."
+        return "⚠️ Configure a chave `GEMINI_API_KEY` nos Secrets do Streamlit para gerar o prognóstico sazonal detalhado por Inteligência Artificial."
     
     prompt = f"""
     Você é um especialista em Climatologia Agrícola e Economia Rural do Rio Grande do Sul (SEAPI-RS).
     Gere um PROGNÓSTICO SAZONAL ESTRATÉGICO real para o município de {municipio} (RS) (Coordenadas: {lat}, {lon}).
 
-    Considere as características geográficas e agrícolas reais deste município no RS e a dinâmica climática sazonal atual (El Niño/La Niña e anomalias do Atlântico Sul).
+    Considere as características geográficas e agrícolas reais deste município no RS e a dinâmica climática sazonal atual.
 
     Estruture a resposta nos seguintes tópicos técnicos:
     1. 📅 **Cenário Climatológico Trimestral para {municipio}:** Projeção de chuvas e temperatura para os próximos 3 a 6 meses.
@@ -172,9 +178,9 @@ def gerar_prognostico_sazonal_gemini(municipio, lat, lon):
         )
         return response.text
     except Exception as e:
-        return f"Não foi possível gerar o prognóstico sazonal em tempo real ({e})."
+        return f"Não foi possível gerar o prognóstico sazonal em tempo real no momento ({e})."
 
-# Carregamento de Municípios via IBGE
+# 6. APIs IBGE e Clima
 @st.cache_data(ttl=86400)
 def carregar_municipios_ibge():
     url = "https://servicodados.ibge.gov.br/api/v1/localidades/estados/43/municipios"
@@ -225,6 +231,13 @@ municipio_sel = st.sidebar.selectbox(
 
 lat, lon = buscar_coordenadas_municipio(municipio_sel)
 dados_16dias = buscar_clima_avancado(lat, lon)
+
+st.sidebar.markdown("---")
+# Status do Gemini na Sidebar
+if client_gemini:
+    st.sidebar.success("🤖 Google Gemini IA: **Conectado**")
+else:
+    st.sidebar.warning("🤖 Google Gemini IA: **Modo Offline** (Configure a API Key nos Secrets)")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📲 Reportar Ocorrência de Campo")
@@ -397,4 +410,4 @@ with aba_sazonal:
     with st.spinner(f"Gerando análise de inteligência sazonal customizada para {municipio_sel}..."):
         relatorio_sazonal = gerar_prognostico_sazonal_gemini(municipio_sel, lat, lon)
         st.markdown(relatorio_sazonal)
-        
+                                          
