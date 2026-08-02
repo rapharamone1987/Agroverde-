@@ -15,16 +15,38 @@ st.title("🌾 AgroVerde RS — Gêmeo Digital & Inteligência Climática")
 st.caption("Secretaria da Agricultura, Pecuária, Produção Sustentável e Irrigação (SEAPI-RS)")
 st.markdown("---")
 
-MUNICIPIOS_RS = {
-    "Osório": {"lat": -29.8863, "lon": -50.2697},
-    "Alegrete": {"lat": -29.7831, "lon": -55.7919},
-    "Bagé": {"lat": -31.3312, "lon": -54.1069},
-    "Uruguaiana": {"lat": -29.7547, "lon": -57.0883},
-    "Camaquã": {"lat": -30.8511, "lon": -51.8119},
-    "Cruz Alta": {"lat": -28.6386, "lon": -53.6064},
-}
+# 2. Carregar Todos os 497 Municípios do RS via API Oficial do IBGE
+@st.cache_data(ttl=86400)
+def carregar_municipios_ibge():
+    url = "https://servicodados.ibge.gov.br/api/v1/localidades/estados/43/municipios"
+    try:
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            dados = res.json()
+            # Ordena os municípios em ordem alfabética
+            municipios = sorted([m["nome"] for m in dados])
+            return municipios
+    except Exception:
+        pass
+    # Fallback caso a API offline
+    return ["Osório", "Alegrete", "Bagé", "Camaquã", "Cruz Alta", "Porto Alegre", "Uruguaiana"]
 
-# 2. Busca de Clima para Curto/Médio Prazo (16 Dias)
+# Carregar coordenadas reais do município selecionado via API Nominatim/OpenStreetMap
+@st.cache_data(ttl=86400)
+def buscar_coordenadas_municipio(nome_municipio):
+    url = f"https://nominatim.openstreetmap.org/search?format=json&q={nome_municipio},Rio+Grande+do+Sul,Brasil"
+    headers = {"User-Agent": "AgroVerdeRS_App"}
+    try:
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200 and len(res.json()) > 0:
+            item = res.json()[0]
+            return float(item["lat"]), float(item["lon"])
+    except Exception:
+        pass
+    # Coordenadas do centro do RS como padrão
+    return -30.0346, -51.2177
+
+# 3. Busca de Dados Climáticos (16 Dias)
 @st.cache_data(ttl=3600)
 def buscar_clima_16dias(lat, lon):
     url = (
@@ -39,12 +61,18 @@ def buscar_clima_16dias(lat, lon):
     except Exception:
         return None
 
-# Sidebar
+# Sidebar - Busca por todos os municípios do RS
 st.sidebar.header("🔍 Painel de Controle")
-municipio_sel = st.sidebar.selectbox("Selecione o Município:", list(MUNICIPIOS_RS.keys()))
-coords = MUNICIPIOS_RS[municipio_sel]
 
-dados_16dias = buscar_clima_16dias(coords["lat"], coords["lon"])
+lista_municipios = carregar_municipios_ibge()
+municipio_sel = st.sidebar.selectbox(
+    f"Selecione o Município (Total: {len(lista_municipios)}):", 
+    lista_municipios, 
+    index=lista_municipios.index("Osório") if "Osório" in lista_municipios else 0
+)
+
+lat, lon = buscar_coordenadas_municipio(municipio_sel)
+dados_16dias = buscar_clima_16dias(lat, lon)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📲 Registrar Ação Verde (Produtor)")
@@ -53,16 +81,16 @@ if comprovante:
     st.sidebar.success("Ação registrada com sucesso! Em análise para incentivo fiscal/crédito.")
 
 # Navegação por Abas
-aba_operacional, aba_sazonal = st.tabs([
-    "⚡ Monitoramento Operacional (1 a 16 Dias)",
+aba_operacional, aba_gestao_detalhada, aba_sazonal = st.tabs([
+    "⚡ Monitoramento Operacional (16 Dias)",
+    "🛠️ Módulo de Gestão & Ações Detalhadas",
     "📅 Tendência Sazonal & Estratégica (1 a 6 Meses)"
 ])
 
 # ---------------------------------------------------------
-# ABA 1: MONITORAMENTO OPERACIONAL (Com Resumo e Ações)
+# ABA 1: MONITORAMENTO OPERACIONAL
 # ---------------------------------------------------------
 with aba_operacional:
-    # 1. Métricas em Tempo Real
     if dados_16dias and "current" in dados_16dias:
         curr = dados_16dias["current"]
         c1, c2, c3, c4 = st.columns(4)
@@ -72,76 +100,16 @@ with aba_operacional:
         c4.metric("Vento Atual", f"{curr.get('wind_speed_10m', 'N/D')} km/h")
 
     st.markdown("---")
-
-    # 2. NOVO PAINEL: Resumo do Prognóstico & Ações Recomendadas
-    st.subheader(f"📋 Prognóstico Operacional & Diretrizes Técnicas — {municipio_sel}")
-
-    if dados_16dias and "daily" in dados_16dias:
-        daily = dados_16dias["daily"]
-        chuvas = daily["precipitation_sum"]
-        temp_max = daily["temperature_2m_max"]
-        ventos_max = daily["wind_speed_10m_max"]
-
-        chuva_acum_16 = sum(chuvas)
-        max_temp_periodo = max(temp_max)
-        max_vento_periodo = max(ventos_max)
-
-        col_prog, col_acoes = st.columns(2)
-
-        # Lógica para construir o Resumo do Prognóstico
-        with col_prog:
-            st.markdown("#### 🔮 Resumo do Prognóstico (Próximos 16 Dias)")
-            
-            resumo_texto = f"- **Volume Total de Chuva:** Estimado em **{chuva_acum_16:.1f} mm** para o período.\n"
-            resumo_texto += f"- **Pico de Temperatura:** Máxima prevista de **{max_temp_periodo:.1f} °C**.\n"
-            resumo_texto += f"- **Rajada Máxima de Vento:** Até **{max_vento_periodo:.1f} km/h**.\n"
-
-            if chuva_acum_16 < 20:
-                resumo_texto += "- **Diagnóstico Geral:** Tendência de **déficit hídrico severo** e aceleração da evapotranspiração do solo."
-            elif chuva_acum_16 > 70:
-                resumo_texto += "- **Diagnóstico Geral:** Tendência de **saturação de solo** e risco de alagamento em áreas baixas."
-            else:
-                resumo_texto += "- **Diagnóstico Geral:** Condições dentro da normalidade com umidade moderada."
-
-            st.info(resumo_texto)
-
-        # Lógica para determinar as Ações Recomendadas
-        with col_acoes:
-            st.markdown("#### 🛠️ Ações Recomendadas (Manejo & Defesa)")
-            
-            acoes = []
-            if chuva_acum_16 < 20:
-                acoes.append("💧 **Manejo de Irrigação:** Ativar reservas de água e racionalizar turnos de rega.")
-                acoes.append("🌱 **Proteção do Solo:** Aplicar cobertura vegetal/biochar para reter umidade na raiz.")
-            elif chuva_acum_16 > 70:
-                acoes.append("🚜 **Drenagem:** Inspecionar e desobstruir canais de drenagem e sarjetas nas lavouras.")
-                acoes.append("⚠️ **Logística:** Antecipar escoamento de insumos sensíveis antes de períodos de chuva forte.")
-
-            if max_temp_periodo >= 33:
-                acoes.append("🐄 **Pecuária/Leite:** Ligar sistemas de aspersão/ventilação em galpões contra estresse térmico.")
-
-            if max_vento_periodo >= 50:
-                acoes.append("🏛️ **Estruturas:** Ancorar estufas, silos e silos-bag contra rajadas de vento severas.")
-
-            if not acoes:
-                acoes.append("✅ **Manutenção de Rotina:** Manter monitoramento padrão e práticas conservacionistas regulares.")
-
-            for acao in acoes:
-                st.write(f"- {acao}")
-
-    st.markdown("---")
-
-    # 3. Mapa Tático e Tabela Diária
-    c_mapa, c_tabela = st.columns([2, 1])
     
+    c_mapa, c_tabela = st.columns([2, 1])
     with c_mapa:
-        st.subheader(f"🗺️ Mapa Tático — {municipio_sel}")
-        m = folium.Map(location=[coords["lat"], coords["lon"]], zoom_start=10)
-        folium.Marker([coords["lat"], coords["lon"]], popup=f"<b>{municipio_sel}</b>").add_to(m)
+        st.subheader(f"🗺️ Localização Tática — {municipio_sel} (RS)")
+        m = folium.Map(location=[lat, lon], zoom_start=11)
+        folium.Marker([lat, lon], popup=f"<b>{municipio_sel}</b>").add_to(m)
         st_folium(m, width="100%", height=400)
         
     with c_tabela:
-        st.subheader("📅 Detalhamento Diário (16 Dias)")
+        st.subheader("📅 Previsão (16 Dias)")
         if dados_16dias and "daily" in dados_16dias:
             daily = dados_16dias["daily"]
             df_16 = pd.DataFrame({
@@ -153,7 +121,89 @@ with aba_operacional:
             st.dataframe(df_16, use_container_width=True, height=350, hide_index=True)
 
 # ---------------------------------------------------------
-# ABA 2: TENDÊNCIA SAZONAL (1 a 6 Meses)
+# ABA 2: MÓDULO DE GESTÃO & AÇÕES DETALHADAS
+# ---------------------------------------------------------
+with aba_gestao_detalhada:
+    st.subheader(f"📋 Plano de Ações Operacionais & Manejo Técnico — {municipio_sel}")
+    st.info("💡 **Diretrizes da SEAPI/EMATER:** Orientações detalhadas por cadeia produtiva com base na análise dos dados meteorológicos dos próximos 16 dias.")
+
+    if dados_16dias and "daily" in dados_16dias:
+        daily = dados_16dias["daily"]
+        chuvas = daily["precipitation_sum"]
+        temp_max = daily["temperature_2m_max"]
+        ventos_max = daily["wind_speed_10m_max"]
+
+        chuva_acum_16 = sum(chuvas)
+        max_temp_periodo = max(temp_max)
+        max_vento_periodo = max(ventos_max)
+
+        # Diagnóstico Geral
+        st.markdown(f"### 🔍 Diagnóstico do Período ({municipio_sel})")
+        st.write(f"- **Volume total de chuva previsto:** `{chuva_acum_16:.1f} mm` | **Temperatura máxima:** `{max_temp_periodo:.1f} °C` | **Vento máximo:** `{max_vento_periodo:.1f} km/h`")
+
+        st.markdown("---")
+        st.markdown("### 🌾 Ações Detalhadas por Setor")
+
+        col_leite, col_graos, col_infra = st.columns(3)
+
+        # 1. Cadeia de Leite e Pecuária
+        with col_leite:
+            st.markdown("#### 🐄 Pecuária & Leite")
+            if max_temp_periodo >= 32:
+                st.error("**ALERTA DE ESTRESSE TÉRMICO ANIMAL**")
+                st.markdown("""
+                * **Ventilação & Aspersão:** Ligar sistemas de resfriamento nos galpões e salas de espera 30min antes da ordenha.
+                * **Água Potável:** Verificar vazão dos bebedouros (demanda aumenta em até 40% em dias quentes).
+                * **Sombreamento:** Garantir acesso a áreas sombreadas (mínimo de $4m^2$ de sombra por vaca).
+                * **Dieta:** Ajustar fornecimento de volumoso para horários mais frios (início da manhã/noite).
+                """)
+            else:
+                st.success("**Condições Térmicas Adequadas**")
+                st.markdown("""
+                * Manter rotina padrão de pastejo.
+                * Monitorar qualidade da água e limpeza de açudes/reservatórios.
+                """)
+
+        # 2. Lavouras e Grãos
+        with col_graos:
+            st.markdown("#### 🌾 Lavouras & Grãos")
+            if chuva_acum_16 < 25:
+                st.warning("**ALERTA DE DÉFICIT HÍDRICO**")
+                st.markdown("""
+                * **Manejo de Irrigação:** Escalonar turnos de rega priorizando fases críticas (florescimento/enchimento de grão).
+                * **Conservação do Solo:** Manter palhada de cobertura e incorporar biochar/pó de pedra para ampliar retenção na raiz.
+                * **Pulverização:** Evitar aplicação de defensivos em horários com umidade do ar $< 50\%$.
+                """)
+            elif chuva_acum_16 > 70:
+                st.error("**ALERTA DE EXCESSO DE UMIDADE**")
+                st.markdown("""
+                * **Drenagem:** Inspecionar sulcos e curvas de nível para conter erosão.
+                * **Fitossanidade:** Monitorar surgimento de doenças fúngicas pós-chuva.
+                """)
+            else:
+                st.success("**Umidade Adequada para Manejo**")
+                st.markdown("""
+                * Condições favoráveis para adubação de cobertura e tratamentos fitossanitários.
+                """)
+
+        # 3. Infraestrutura & Logística Rural
+        with col_infra:
+            st.markdown("#### 🏛️ Infraestrutura & Estruturas")
+            if max_vento_periodo >= 50:
+                st.error("**RISCO ESTRUTURAL (VENTO FORTE)**")
+                st.markdown("""
+                * **Ancoragem:** Reforçar amarrações em estufas, lonas e coberturas de silos-bag.
+                * **Energia:** Verificar geradores de emergência para ordenhas e resfriadores de leite.
+                * **Pintura Refletiva:** Aplicar tinta de alto albedo em galpões metálicos para reduzir carga térmica.
+                """)
+            else:
+                st.success("**Estruturas Operacionais Estáveis**")
+                st.markdown("""
+                * Momento ideal para manutenção preventiva de telhados e aplicação de tinta refletiva.
+                """)
+
+# ---------------------------------------------------------
+# ABA 3: TENDÊNCIA SAZONAL (1 a 6 Meses)
 # ---------------------------------------------------------
 with aba_sazonal:
     st.subheader(f"📊 Planejamento Sazonal de Safra — {municipio_sel}")
