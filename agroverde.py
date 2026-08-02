@@ -15,15 +15,14 @@ st.title("🌾 AgroVerde RS — Gêmeo Digital & Inteligência Climática")
 st.caption("Secretaria da Agricultura, Pecuária, Produção Sustentável e Irrigação (SEAPI-RS)")
 st.markdown("---")
 
-# 2. Carregar Municípios do RS via API Oficial do IBGE
+# 2. Carregar Municípios do RS via API do IBGE
 @st.cache_data(ttl=86400)
 def carregar_municipios_ibge():
     url = "https://servicodados.ibge.gov.br/api/v1/localidades/estados/43/municipios"
     try:
         res = requests.get(url, timeout=10)
         if res.status_code == 200:
-            dados = res.json()
-            return sorted([m["nome"] for m in dados])
+            return sorted([m["nome"] for m in res.json()])
     except Exception:
         pass
     return ["Osório", "Alegrete", "Bagé", "Camaquã", "Cruz Alta", "Porto Alegre", "Uruguaiana"]
@@ -41,13 +40,13 @@ def buscar_coordenadas_municipio(nome_municipio):
         pass
     return -30.0346, -51.2177
 
-# 3. Busca de Dados Climáticos + Nível de Rios / Eventos Extremos (16 Dias)
+# 3. Busca Climática Completa (16 Dias)
 @st.cache_data(ttl=3600)
 def buscar_clima_avancado(lat, lon):
     url = (
         f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
         f"&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m"
-        f"&daily=precipitation_sum,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,weather_code"
+        f"&daily=precipitation_sum,temperature_2m_max,temperature_2m_min,wind_speed_10m_max"
         f"&forecast_days=16&timezone=America%2FSao_Paulo"
     )
     try:
@@ -76,16 +75,16 @@ if comprovante:
     st.sidebar.success("Ação registrada com sucesso! Em análise para incentivo fiscal/crédito.")
 
 # Navegação por Abas
-aba_operacional, aba_gestao_detalhada, aba_sazonal = st.tabs([
-    "⚡ Monitoramento & Rios (16 Dias)",
-    "🛠️ Módulo de Gestão & Eventos Extremos",
-    "📅 Tendência Sazonal & Ações Estratégicas (1 a 6 Meses)"
+aba_operacional, aba_sazonal = st.tabs([
+    "⚡ Monitoramento & Ações Práticas (Imediato)",
+    "📅 Tendência Sazonal & Estratégia de Governo (1 a 6 Meses)"
 ])
 
-# ---------------------------------------------------------
-# ABA 1: MONITORAMENTO OPERACIONAL & NÍVEL DE RIOS
-# ---------------------------------------------------------
+# =========================================================
+# ABA 1: MONITORAMENTO & AÇÕES PRÁTICAS (TUDO NA 1ª GUIA)
+# =========================================================
 with aba_operacional:
+    # A. Métricas em Tempo Real & Nível dos Rios
     if dados_16dias and "current" in dados_16dias:
         curr = dados_16dias["current"]
         c1, c2, c3, c4 = st.columns(4)
@@ -96,40 +95,87 @@ with aba_operacional:
 
     st.markdown("---")
 
-    # Painel de Monitoramento Fluvial e Bacias
-    st.subheader(f"🌊 Status da Bacia Hidrográfica & Nível de Rios — {municipio_sel}")
-    
-    col_rio1, col_rio2, col_rio3 = st.columns(3)
-    
     if dados_16dias and "daily" in dados_16dias:
-        chuva_acum_7dias = sum(dados_16dias["daily"]["precipitation_sum"][:7])
-        
-        # Simulação de Nível de Rio com base nos acumulados reais
-        if chuva_acum_7dias > 80:
-            status_rio = "ALERTA DE CHEIA / OVERFLOW"
-            nivel_rio = "+ 2.80 m (Acima do Normal)"
-            cor_rio = "inverse"
-        elif chuva_acum_7dias > 30:
-            status_rio = "Atenção / Calha Cheia"
-            nivel_rio = "+ 0.90 m (Dentro da Calha)"
-            cor_rio = "normal"
-        else:
-            status_rio = "Nível Baixo / Estiagem"
-            nivel_rio = "- 0.45 m (Abaixo do Normal)"
-            cor_rio = "off"
+        daily = dados_16dias["daily"]
+        chuvas = daily["precipitation_sum"]
+        temp_max = daily["temperature_2m_max"]
+        ventos_max = daily["wind_speed_10m_max"]
 
-        col_rio1.metric("Acumulado de Chuva (7 Dias)", f"{chuva_acum_7dias:.1f} mm")
-        col_rio2.metric("Tendência Fluvial (Rio Principal)", status_rio)
-        col_rio3.metric("Cota Estada Fluvial (Est.)", nivel_rio, delta_color=cor_rio)
+        chuva_acum_7 = sum(chuvas[:7])
+        chuva_acum_16 = sum(chuvas)
+        max_temp_periodo = max(temp_max)
+        max_vento_periodo = max(ventos_max)
+
+        # B. Central de Alertas Oficiais & Nível de Rios
+        st.subheader(f"🌊 Status da Bacia & Alertas Severos — {municipio_sel}")
+        
+        c_rio1, c_rio2, c_rio3 = st.columns(3)
+        status_rio = "ALERTA DE CHEIA" if chuva_acum_7 > 80 else ("Atenção / Calha Cheia" if chuva_acum_7 > 30 else "Nível Baixo / Estiagem")
+        cota_rio = "+ 2.80 m (Alto)" if chuva_acum_7 > 80 else ("+ 0.90 m (Normal)" if chuva_acum_7 > 30 else "- 0.45 m (Baixo)")
+        
+        c_rio1.metric("Acumulado 7 Dias", f"{chuva_acum_7:.1f} mm")
+        c_rio2.metric("Tendência Fluvial", status_rio)
+        c_rio3.metric("Cota Estada Fluvial (Est.)", cota_rio)
+
+        # C. Alerta Severo (Exemplo: Tempestade / Alerta Amarelo/Laranja)
+        if (20 <= chuva_acum_7 <= 60) or (40 <= max_vento_periodo <= 60):
+            st.warning("⚠️ **ALERTA METEOROLÓGICO: PERIGO POTENCIAL DE TEMPESTADE / VENDAVAL** (Inmet / Defesa Civil)")
+            with st.expander("🛡️ **Precauções de Segurança Pessoal (Defesa Civil 199)**"):
+                st.markdown("* Não se abrigue debaixo de árvores | Evite usar eletrodomésticos na tomada | Emergência: 199 / 193.")
+
+        st.markdown("---")
+
+        # D. PAINEL DE AÇÕES PRÁTICAS OPERACIONAIS (AÇÕES NO CAMPO)
+        st.subheader(f"🚜 Checklist de Manejo Operacional na Propriedade")
+        
+        col_op1, col_op2, col_op3 = st.columns(3)
+
+        with col_op1:
+            st.markdown("#### 🌾 Lavouras & Hortifrúti")
+            if chuva_acum_16 < 25:
+                st.markdown("""
+                * **Irrigação:** Priorizar turnos de rega em fases de floração/enchimento.
+                * **Pulverização:** **Suspender** se umidade do ar $< 50\%$ ou vento $> 10\text{ km/h}$.
+                * **Solo:** Manter palhada e aplicar biochar para conter evaporação.
+                """)
+            else:
+                st.markdown("""
+                * **Adubação/Defensivos:** **Suspender** aplicações pré-chuva (risco de lixiviação).
+                * **Estufas:** Baixar cortinas laterais contra rajadas de vento.
+                * **Drenagem:** Inspecionar valas e canais para conter empoçamento.
+                """)
+
+        with col_op2:
+            st.markdown("#### 🐄 Pecuária & Leite")
+            if max_temp_periodo >= 32:
+                st.markdown("""
+                * **Estresse Térmico:** Ligar aspersores e ventiladores 30 min antes da ordenha.
+                * **Proteção de Raios:** Retirar gado de perto de cercas de arame e árvores isoladas.
+                * **Água Potável:** Checar vazão dos bebedouros (demanda sobe em 40%).
+                """)
+            else:
+                st.markdown("""
+                * **Remoção de Rebanho:** Tirar animais de áreas baixas sujeitas a alagamento.
+                * **Alimentação:** Garantir trato coberto antes do início das chuvas.
+                """)
+
+        with col_op3:
+            st.markdown("#### 🚜 Máquinas & Infraestrutura")
+            st.markdown("""
+            * **Energia:** Testar gerador a combustível/tomada do trator para resfriadores de leite.
+            * **Insumos:** Proteger sementes, rações e adubos em locais elevados.
+            * **Maquinário:** Retirar tratores de perto de árvores antigas ou galpões frágeis.
+            """)
 
     st.markdown("---")
-    
+
+    # E. Mapa Tático e Tabela Diária
     c_mapa, c_tabela = st.columns([2, 1])
     with c_mapa:
-        st.subheader(f"🗺️ Localização Tática — {municipio_sel} (RS)")
+        st.subheader(f"🗺️ Mapa Tático — {municipio_sel}")
         m = folium.Map(location=[lat, lon], zoom_start=11)
         folium.Marker([lat, lon], popup=f"<b>{municipio_sel}</b>").add_to(m)
-        st_folium(m, width="100%", height=400)
+        st_folium(m, width="100%", height=380)
         
     with c_tabela:
         st.subheader("📅 Previsão (16 Dias)")
@@ -141,71 +187,11 @@ with aba_operacional:
                 "Máx (°C)": daily["temperature_2m_max"],
                 "Vento (km/h)": daily["wind_speed_10m_max"]
             })
-            st.dataframe(df_16, use_container_width=True, height=350, hide_index=True)
+            st.dataframe(df_16, use_container_width=True, height=330, hide_index=True)
 
-# ---------------------------------------------------------
-# ABA 2: MÓDULO DE GESTÃO & EVENTOS EXTREMOS
-# ---------------------------------------------------------
-with aba_gestao_detalhada:
-    st.subheader(f"📋 Alertas de Eventos Severos & Matriz de Resposta — {municipio_sel}")
-
-    if dados_16dias and "daily" in dados_16dias:
-        daily = dados_16dias["daily"]
-        chuvas = daily["precipitation_sum"]
-        temp_max = daily["temperature_2m_max"]
-        ventos_max = daily["wind_speed_10m_max"]
-
-        chuva_acum_16 = sum(chuvas)
-        max_temp_periodo = max(temp_max)
-        max_vento_periodo = max(ventos_max)
-
-        # Painel de Alerta de Eventos Severos Combinados
-        st.markdown("### 🚨 Central de Mitigação de Eventos Extremos")
-        
-        c_evt1, c_evt2, c_evt3 = st.columns(3)
-
-        # Matriz Risco 1: Enxurrada/Granizo
-        if chuva_acum_16 > 90 or any(c > 35 for c in chuvas):
-            c_evt1.error("🌧️ **RISCO DE ENXURRADA / GRANIZO**\n\n- Desobstruir valas e canais rurais imediatamente.\n- Proteger maquinários de áreas de baixada.\n- Acionar alerta da Defesa Civil local.")
-        else:
-            c_evt1.success("✅ **Sem Risco Inundação/Granizo**\n\n- Monitoramento padrão de calhas.")
-
-        # Matriz Risco 2: Vendaval
-        if max_vento_periodo >= 55:
-            c_evt2.error(f"💨 **RISCO DE VENDAVAL ({max_vento_periodo:.0f} km/h)**\n\n- Ancorar estruturas de estufas e galpões.\n- Desligar redes elétricas rurais expostas.\n- Testar geradores de emergência.")
-        else:
-            c_evt2.success("✅ **Ventos sob Controle**\n\n- Sem alertas estruturais de rajada.")
-
-        # Matriz Risco 3: Onda de Calor / Seca Relâmpago
-        if max_temp_periodo >= 34 or chuva_acum_16 < 15:
-            c_evt3.warning(f"🔥 **CALOR EXTREMO / SECA RELÂMPAGO**\n\n- Acionar aspersores em galpões de ordenha.\n- Racionar irrigação para fases de floração.\n- Aumentar oferta de água para rebanhos.")
-        else:
-            c_evt3.success("✅ **Temperatura Adequada**\n\n- Condições térmicas estáveis.")
-
-        st.markdown("---")
-        st.markdown("### 🌾 Manejo Técnico Recomendado")
-
-        col_leite, col_graos = st.columns(2)
-
-        with col_leite:
-            st.markdown("#### 🐄 Cadeia do Leite & Proteína Animal")
-            st.markdown("""
-            * **Estresse Térmico:** Ligar resfriamento 30 min antes da ordenha.
-            * **Reservatórios:** Garantir cota mínima de reservatório de água para dessedentação animal.
-            * **Conservação da Silagem:** Vedar silos contra entrada de umidade por chuvas fortes.
-            """)
-
-        with col_graos:
-            st.markdown("#### 🌾 Lavoras de Grãos & Hortifrúti")
-            st.markdown("""
-            * **Solo e Umidade:** Aplicar cobertura morta ou biocarvão para retardar perda por evaporação.
-            * **Aplicação Defensivos:** Evitar pulverização com ventos $> 10\text{ km/h}$ ou umidade $< 50\%$.
-            * **Escoamento:** Retirar safra armazenada em áreas rurais suscetíveis a alagamento.
-            """)
-
-# ---------------------------------------------------------
-# ABA 3: TENDÊNCIA SAZONAL DETALHADA (1 a 6 Meses)
-# ---------------------------------------------------------
+# =========================================================
+# ABA 2: TENDÊNCIA SAZONAL & ESTRATÉGIA DE GOVERNO
+# =========================================================
 with aba_sazonal:
     st.subheader(f"📊 Planejamento Sazonal Estratégico & Políticas Públicas — {municipio_sel}")
     st.info("💡 **Diretrizes de Governo da SEAPI:** Ações de médio e longo prazo por pilar de política pública com base na tendência climática trimestral/semestral.")
@@ -216,49 +202,16 @@ with aba_sazonal:
     col_s3.metric("Meta de Resiliência de Solo", "85% de Cobertura", "Acionar Programa Biochar")
 
     st.markdown("---")
-    st.markdown("### 🗓️ Cronograma e Detalhamento de Ações Estratégicas da SEAPI")
 
-    # Módulos Expandidos de Ação Sazonal
-    with st.expander("💧 **1. Pilar de Irrigação & Reservas Hídricas (Ações de 1 a 6 Meses)**", expanded=True):
-        st.markdown("""
-        * **Mês 1-2 (Preparação):** Limpeza de açudes, vertedouros e canais de irrigação nas propriedades cadastradas.
-        * **Mês 3-4 (Execução):** Priorização de subvenções do Fundo de Desenvolvimento Rural (FDR) para micro-reservatórios e sistemas de irrigação por gotejamento na agricultura familiar.
-        * **Mês 5-6 (Contingência):** Ativação da rede de caminhões-pipa comunitários para comunidades com déficit hídrico severo.
-        """)
+    with st.expander("💧 **1. Pilar de Irrigação & Reservas Hídricas (1 a 6 Meses)**", expanded=True):
+        st.markdown("* Limpeza de açudes | Priorização do Fundo FDR para irrigação por gotejamento | Rede de caminhões-pipa.")
 
     with st.expander("🌱 **2. Pilar de Solo, Carbono e Biochar (Manejo Regenerativo)**"):
-        st.markdown("""
-        * **Fomento ao Biocarvão:** Distribuição do *Kit AgroClima* (Biochar + Remineralizadores de Basalto) para retenção de água e adubação orgânica.
-        * **Plantio de Cobertura:** Incentivo ao plantio de adubos verdes (palhada) para evitar o aquecimento direto da camada arável do solo.
-        * **Certificação:** Validação via app para emissão do **Selo RS Carbono Neutro**.
-        """)
+        st.markdown("* Distribuição do *Kit AgroClima* | Incentive ao plantio de cobertura | Emissão do **Selo RS Carbono Neutro**.")
 
     with st.expander("🏛️ **3. Pilar de Infraestrutura & Bem-Estar Animal**"):
-        st.markdown("""
-        * **Cinturão de Resfriamento Passivo:** Programa de pintura de alto albedo (tinta refletiva) nos galpões metálicos de cooperativas e pequenas propriedades.
-        * **Sombreamento de Pastagens:** Linha de fomento para sistemas silvopastoris (integração lavoura-pecuária-floresta).
-        """)
+        st.markdown("* Pintura de alto albedo em galpões metálicos | Linhas para sistemas silvopastoris.")
 
     with st.expander("💳 **4. Pilar de Crédito Verde, Seguro & Incentivos Fiscais**"):
-        st.markdown("""
-        * **Desconto Fiscal (ICMS/IPVA Agrícola):** Produtores com ações validadas no app recebem bonificação fiscal do Estado.
-        * **Subvenção de Seguro Rural:** Bonificação nas apólices de seguro do Banrisul/BRDE para produtores que adotam as recomendações técnicas do app.
-        """)
-
-    st.markdown("---")
-    st.markdown("### 📅 Matriz de Acompanhamento Mensal de Safra")
-    
-    df_sazonal = pd.DataFrame({
-        "Período": ["Mês 1", "Mês 2", "Mês 3", "Mês 4", "Mês 5", "Mês 6"],
-        "Cenário Climático": ["Dentro da Média", "Abaixo da Média (-10%)", "Abaixo da Média (-25%)", "Crítico (-35%)", "Recuperação Moderada", "Dentro da Média"],
-        "Ação Prioritária SEAPI": [
-            "Manutenção de açudes e reservatórios",
-            "Aplicação de coberturas de solo (Biochar/Basalto)",
-            "Liberação de recursos FDR para irrigação",
-            "Ativação de plano de emergência para leite/grãos",
-            "Monitoramento contínuo de umidade de solo",
-            "Avaliação de impacto e certificação"
-        ]
-    })
-    st.table(df_sazonal)
-    
+        st.markdown("* Desconto no ICMS/IPVA agrícola via validação do app | Bonificação no seguro rural do Banrisul/BRDE.")
+        
