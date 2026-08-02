@@ -408,4 +408,4 @@ with aba_sazonal:
     with st.spinner(f"Gerando análise de inteligência sazonal customizada para {municipio_sel}..."):
         relatorio_sazonal = gerar_prognostico_sazonal_gemini(municipio_sel, lat, lon)
         st.markdown(relatorio_sazonal)
-        
+    
