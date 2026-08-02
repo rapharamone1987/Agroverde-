@@ -125,7 +125,6 @@ def buscar_dados_bloqueios_crbm(nome_municipio):
     termo = nome_municipio.strip().lower()
     ocorrencias = []
     
-    # URLs oficiais onde o CRBM publica o boletim de rodovias estaduais
     urls_crbm = [
         "https://www.brigadamilitar.rs.gov.br/cprvbm",
         "https://estado.rs.gov.br/atualizadas-informacoes-sobre-situacao-de-rodovias-e-pontes-no-rio-grande-do-sul"
@@ -141,7 +140,6 @@ def buscar_dados_bloqueios_crbm(nome_municipio):
             if res.status_code == 200:
                 soup = BeautifulSoup(res.text, "html.parser")
                 
-                # Procura em tabelas no site
                 for tabela in soup.find_all("table"):
                     for linha in tabela.find_all("tr"):
                         colunas = [c.get_text(strip=True) for c in linha.find_all(["td", "th"])]
@@ -155,7 +153,6 @@ def buscar_dados_bloqueios_crbm(nome_municipio):
                                 "Fonte": "Site Oficial CRBM / BM-RS"
                             })
                 
-                # Procura em parágrafos e listas (p, li)
                 if not ocorrencias:
                     elementos = soup.find_all(["li", "p"])
                     for el in elementos:
@@ -173,7 +170,6 @@ def buscar_dados_bloqueios_crbm(nome_municipio):
         except Exception:
             continue
 
-    # Fallback via API caso o HTML não retorne tabela estruturada no momento
     if not ocorrencias:
         try:
             res_api = requests.get("https://servicos.daer.rs.gov.br/api/bloqueios", headers=headers, timeout=5)
@@ -459,4 +455,7 @@ with aba_sazonal:
 
         Estruture o relatório exatamente nestas 3 seções:
         1. 📅 **Projeção Climatológica Trimestral ({municipio_sel}):** Tendências de precipitação acumulada, anomalias de temperatura e riscos de enxurradas nas bacias hidrográficas locais para os próximos 3 a 6 meses.
-        2. 🌾 **Impactos e Riscos nas Culturas Locais:** Avaliação para fruticultura, hor
+        2. 🌾 **Impactos e Riscos nas Culturas Locais:** Avaliação para fruticultura, horticultura, grãos e agroindústria local.
+        3. 🛡️ **Plano Diretor de Resiliência Rural:** Recomendações técnicas para conservação de encostas, proteção de acessos, contenção de erosão e seguro rural.
+        """
+        with st.spinner(f"Processa
