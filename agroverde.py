@@ -11,82 +11,76 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS Customizada (Visual atraente, contraste ajustado e quebra de linhas)
+# Estilização CSS Customizada (Isolada estritamente nos cards/banners para não quebrar o tema global)
 st.markdown("""
     <style>
-    /* Força quebra de linha em todas as tabelas e textos do Streamlit */
+    /* Força a quebra de linha nas tabelas e listas sem alterar as cores globais */
     div[data-testid="stMarkdownContainer"] p, div[data-testid="stMarkdownContainer"] li {
         word-wrap: break-word !important;
         white-space: normal !important;
-        color: #0f172a !important;
     }
 
-    /* Cards com fontes em tom escuro para leitura perfeita */
+    /* CARDS OPERACIONAIS: Fundo claro com texto escuro garantido apenas dentro deles */
     .card-lavoura {
-        background-color: #f0fdf4;
-        border-left: 5px solid #16a34a;
-        padding: 16px;
-        border-radius: 8px;
-        margin-bottom: 12px;
-        color: #0f172a !important;
+        background-color: #f0fdf4 !important;
+        border-left: 5px solid #16a34a !important;
+        padding: 16px !important;
+        border-radius: 8px !important;
+        margin-bottom: 12px !important;
     }
     .card-pecuaria {
-        background-color: #fefce8;
-        border-left: 5px solid #ca8a04;
-        padding: 16px;
-        border-radius: 8px;
-        margin-bottom: 12px;
-        color: #0f172a !important;
+        background-color: #fefce8 !important;
+        border-left: 5px solid #ca8a04 !important;
+        padding: 16px !important;
+        border-radius: 8px !important;
+        margin-bottom: 12px !important;
     }
     .card-infra {
-        background-color: #eff6ff;
-        border-left: 5px solid #2563eb;
-        padding: 16px;
-        border-radius: 8px;
-        margin-bottom: 12px;
-        color: #0f172a !important;
+        background-color: #eff6ff !important;
+        border-left: 5px solid #2563eb !important;
+        padding: 16px !important;
+        border-radius: 8px !important;
+        margin-bottom: 12px !important;
     }
 
-    /* Estilo para Títulos dentro dos Cards */
+    /* Regras de texto aplicadas APENAS dentro dos cards */
     .card-lavoura h4, .card-pecuaria h4, .card-infra h4 {
         color: #0f172a !important;
-        margin-top: 0px;
-        font-weight: 700;
+        margin-top: 0px !important;
+        font-weight: 700 !important;
     }
-
-    /* Texto e listas dentro dos cards */
     .card-lavoura li, .card-pecuaria li, .card-infra li,
-    .card-lavoura p, .card-pecuaria p, .card-infra p {
+    .card-lavoura p, .card-pecuaria p, .card-infra p,
+    .card-lavoura b, .card-pecuaria b, .card-infra b {
         color: #1e293b !important;
-        font-size: 14px;
-        line-height: 1.5;
+        font-size: 14px !important;
+        line-height: 1.5 !important;
     }
 
-    /* Banner para Emergência de Rio Cheio */
+    /* BANNER EMERGÊNCIA RIO: Texto fixo em tom vinho escuro */
     .banner-emergencia-rio {
-        background-color: #fff1f2;
-        border: 2px solid #e11d48;
-        padding: 16px;
-        border-radius: 10px;
-        margin-top: 15px;
-        margin-bottom: 20px;
-        color: #881337 !important;
+        background-color: #fff1f2 !important;
+        border: 2px solid #e11d48 !important;
+        padding: 16px !important;
+        border-radius: 10px !important;
+        margin-top: 15px !important;
+        margin-bottom: 20px !important;
     }
     .banner-emergencia-rio h4 {
         color: #9f1239 !important;
-        margin-top: 0px;
+        margin-top: 0px !important;
     }
-    .banner-emergencia-rio li {
+    .banner-emergencia-rio p, .banner-emergencia-rio li, .banner-emergencia-rio b {
         color: #881337 !important;
+        font-size: 14px !important;
     }
 
-    /* Banner Super El Niño */
+    /* BANNER SUPER EL NIÑO: Fundo escuro com texto branco fixo */
     .banner-elnino {
-        background: linear-gradient(90deg, #7f1d1d 0%, #991b1b 100%);
-        color: #ffffff !important;
-        padding: 18px;
-        border-radius: 10px;
-        margin-bottom: 20px;
+        background: linear-gradient(90deg, #7f1d1d 0%, #991b1b 100%) !important;
+        padding: 18px !important;
+        border-radius: 10px !important;
+        margin-bottom: 20px !important;
     }
     .banner-elnino h2, .banner-elnino p {
         color: #ffffff !important;
