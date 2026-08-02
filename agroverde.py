@@ -5,13 +5,6 @@ import pandas as pd
 import requests
 import os
 
-# Importação do SDK do Google GenAI
-try:
-    from google import genai
-    GENAI_DISPONIVEL = True
-except ImportError:
-    GENAI_DISPONIVEL = False
-
 # 1. Configuração da Página
 st.set_page_config(
     page_title="AgroVerde RS - Gêmeo Digital",
@@ -82,26 +75,40 @@ st.title("🌾 AgroVerde RS — Gêmeo Digital & Inteligência Climática")
 st.caption("Secretaria da Agricultura, Pecuária, Produção Sustentável e Irrigação (SEAPI-RS)")
 st.markdown("---")
 
-# 2. Inicialização da API do Google Gemini
-@st.cache_resource
-def iniciar_cliente_gemini():
-    if not GENAI_DISPONIVEL:
-        return None
-    try:
-        # Busca por GEMINI_API_KEY ou GOOGLE_API_KEY nos Secrets / Ambiente
-        api_key = (
-            os.environ.get("GEMINI_API_KEY") 
-            or os.environ.get("GOOGLE_API_KEY")
-            or st.secrets.get("GEMINI_API_KEY", None) 
-            or st.secrets.get("GOOGLE_API_KEY", None)
-        )
-        if api_key:
-            return genai.Client(api_key=api_key)
-    except Exception:
-        pass
-    return None
+# 2. Leitura Direta da Chave nos Secrets
+def obter_gemini_api_key():
+    # Tenta obter de todas as formas possíveis nos Secrets e variáveis de ambiente
+    api_key = (
+        os.environ.get("GEMINI_API_KEY") 
+        or os.environ.get("GOOGLE_API_KEY")
+    )
+    if not api_key and hasattr(st, "secrets"):
+        api_key = st.secrets.get("GEMINI_API_KEY") or st.secrets.get("GOOGLE_API_KEY")
+    return api_key
 
-client_gemini = iniciar_cliente_gemini()
+API_KEY_GEMINI = obter_gemini_api_key()
+
+# Função Universal para chamar o Gemini via REST API (Sem bibliotecas instáveis)
+def chamar_gemini_api(prompt_texto):
+    if not API_KEY_GEMINI:
+        return None
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY_GEMINI}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt_texto}]
+        }]
+    }
+    try:
+        res = requests.post(url, json=payload, headers=headers, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            return data['candidates'][0]['content']['parts'][0]['text']
+        else:
+            return f"⚠️ Erro ao consultar a API do Gemini (Código {res.status_code}): {res.text}"
+    except Exception as e:
+        return f"⚠️ Falha na conexão com a API do Gemini: {e}"
 
 # 3. CONSULTA EM TEMPO REAL DE BLOQUEIOS DO CRBM / DAER
 @st.cache_data(ttl=600)
@@ -131,9 +138,6 @@ def consultar_bloqueios_crbm_reais(nome_municipio):
 
 # 4. AGENTE INTELIGENTE: PARECER DE CURTO PRAZO
 def gerar_diagnostico_curto_prazo(municipio, chuva, temp, vento):
-    if not client_gemini:
-        return f"💡 **Alerta Operacional ({municipio}):** Acumulado de chuva de {chuva:.1f} mm previstos para os próximos 7 dias. Verifique os canais de drenagem nas lavouras e mantenha animais em áreas elevadas."
-    
     prompt = f"""
     Atue como Engenheiro Agrônomo especialista da SEAPI-RS.
     Elabore uma análise operacional de curto prazo para o município de {municipio} (RS):
@@ -146,20 +150,13 @@ def gerar_diagnostico_curto_prazo(municipio, chuva, temp, vento):
     2. 🐄 **Manejo Pecuário:** Cuidados contra estresse térmico ou barro em tambos/ordenha.
     3. 🚜 **Estrutura & Logística:** Cuidados com armazenamento de feno, silos e proteção de máquinas.
     """
-    try:
-        response = client_gemini.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
-        return response.text
-    except Exception as e:
-        return f"💡 **Alerta Operacional ({municipio}):** Acumulado de {chuva:.1f} mm previstos. Atentar para drenagem em lavouras baixas. (Erro da IA: {e})"
+    resposta = chamar_gemini_api(prompt)
+    if resposta:
+        return resposta
+    return f"💡 **Alerta Operacional ({municipio}):** Acumulado de {chuva:.1f} mm previstos para os próximos 7 dias. Verifique os canais de drenagem nas lavouras e mantenha animais em áreas elevadas."
 
-# 5. AGENTE INTELIGENTE: PROGNÓSTICO SAZONAL DINÂMICO DE MÉDIO/LONGO PRAZO
+# 5. AGENTE INTELIGENTE: PROGNÓSTICO SAZONAL DINÂMICO
 def gerar_prognostico_sazonal_gemini(municipio, lat, lon):
-    if not client_gemini:
-        return "⚠️ Configure a chave `GEMINI_API_KEY` nos Secrets do Streamlit para gerar o prognóstico sazonal detalhado por Inteligência Artificial."
-    
     prompt = f"""
     Você é um especialista em Climatologia Agrícola e Economia Rural do Rio Grande do Sul (SEAPI-RS).
     Gere um PROGNÓSTICO SAZONAL ESTRATÉGICO real para o município de {municipio} (RS) (Coordenadas: {lat}, {lon}).
@@ -171,14 +168,10 @@ def gerar_prognostico_sazonal_gemini(municipio, lat, lon):
     2. 🌾 **Riscos para as Principais Culturas Locais:** Como o clima afetará as principais atividades agrícolas/pecuárias típicas desse município.
     3. 🛡️ **Plano de Contingência Recomendado ao Produtor:** Ações preventivas de manejo de solo, reserva hídrica e logística.
     """
-    try:
-        response = client_gemini.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
-        return response.text
-    except Exception as e:
-        return f"Não foi possível gerar o prognóstico sazonal em tempo real no momento ({e})."
+    resposta = chamar_gemini_api(prompt)
+    if resposta:
+        return resposta
+    return "⚠️ Configure a chave `GEMINI_API_KEY` nos Secrets do Streamlit para gerar o prognóstico sazonal detalhado por Inteligência Artificial."
 
 # 6. APIs IBGE e Clima
 @st.cache_data(ttl=86400)
@@ -234,10 +227,10 @@ dados_16dias = buscar_clima_avancado(lat, lon)
 
 st.sidebar.markdown("---")
 # Status do Gemini na Sidebar
-if client_gemini:
+if API_KEY_GEMINI:
     st.sidebar.success("🤖 Google Gemini IA: **Conectado**")
 else:
-    st.sidebar.warning("🤖 Google Gemini IA: **Modo Offline** (Configure a API Key nos Secrets)")
+    st.sidebar.warning("🤖 Google Gemini IA: **Chave não encontrada nos Secrets**")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📲 Reportar Ocorrência de Campo")
@@ -249,7 +242,7 @@ if comprovante:
 aba_operacional, aba_crises, aba_sazonal = st.tabs([
     "⚡ 1. Monitoramento & Bloqueios Reais",
     "🚨 2. Resposta a Crises & Emergências",
-    "🌋 3. Prognóstico Sazonal Dinâmico"
+    "os 3. Prognóstico Sazonal Dinâmico"
 ])
 
 # =========================================================
@@ -410,4 +403,4 @@ with aba_sazonal:
     with st.spinner(f"Gerando análise de inteligência sazonal customizada para {municipio_sel}..."):
         relatorio_sazonal = gerar_prognostico_sazonal_gemini(municipio_sel, lat, lon)
         st.markdown(relatorio_sazonal)
-                                          
+        
