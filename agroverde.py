@@ -11,14 +11,14 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS Customizada (Correção de cores das fontes, quebras de linha e alto contraste)
+# Estilização CSS Customizada (Visual atraente, contraste ajustado e quebra de linhas)
 st.markdown("""
     <style>
     /* Força quebra de linha em todas as tabelas e textos do Streamlit */
     div[data-testid="stMarkdownContainer"] p, div[data-testid="stMarkdownContainer"] li {
         word-wrap: break-word !important;
         white-space: normal !important;
-        color: #0f172a !important; /* Cor de texto padrão bem escura */
+        color: #0f172a !important;
     }
 
     /* Cards com fontes em tom escuro para leitura perfeita */
@@ -92,13 +92,13 @@ st.markdown("""
         color: #ffffff !important;
     }
     </style>
-""", unsafe_unsafe_html=True if hasattr(st, "unsafe_html") else True)
+""", unsafe_allow_html=True)
 
 st.title("🌾 AgroVerde RS — Gêmeo Digital & Inteligência Climática")
 st.caption("Secretaria da Agricultura, Pecuária, Produção Sustentável e Irrigação (SEAPI-RS)")
 st.markdown("---")
 
-# 2. Carregar Municípios do RS via API do IBGE
+# 2. Carregar Municípios do RS via API Oficial do IBGE
 @st.cache_data(ttl=86400)
 def carregar_municipios_ibge():
     url = "https://servicodados.ibge.gov.br/api/v1/localidades/estados/43/municipios"
@@ -138,7 +138,7 @@ def buscar_clima_avancado(lat, lon):
     except Exception:
         return None
 
-# Sidebar
+# 4. Barra Lateral (Sidebar)
 st.sidebar.header("🔍 Painel de Controle")
 
 lista_municipios = carregar_municipios_ibge()
@@ -157,7 +157,7 @@ comprovante = st.sidebar.file_uploader("Enviar foto georreferenciada:", type=["j
 if comprovante:
     st.sidebar.success("Ação registrada com sucesso! Em análise para incentivo fiscal/crédito.")
 
-# Navegação por Abas
+# 5. Navegação por Abas
 aba_operacional, aba_sazonal = st.tabs([
     "⚡ Monitoramento & Ações Práticas (Imediato)",
     "🌋 Tendência Sazonal & Super El Niño (1 a 6 Meses)"
