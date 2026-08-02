@@ -11,39 +11,88 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS customizada para visual atrativo
+# Estilização CSS Customizada (Correção de cores das fontes, quebras de linha e alto contraste)
 st.markdown("""
     <style>
+    /* Força quebra de linha em todas as tabelas e textos do Streamlit */
+    div[data-testid="stMarkdownContainer"] p, div[data-testid="stMarkdownContainer"] li {
+        word-wrap: break-word !important;
+        white-space: normal !important;
+        color: #0f172a !important; /* Cor de texto padrão bem escura */
+    }
+
+    /* Cards com fontes em tom escuro para leitura perfeita */
     .card-lavoura {
         background-color: #f0fdf4;
         border-left: 5px solid #16a34a;
-        padding: 15px;
+        padding: 16px;
         border-radius: 8px;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
+        color: #0f172a !important;
     }
     .card-pecuaria {
         background-color: #fefce8;
         border-left: 5px solid #ca8a04;
-        padding: 15px;
+        padding: 16px;
         border-radius: 8px;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
+        color: #0f172a !important;
     }
     .card-infra {
         background-color: #eff6ff;
         border-left: 5px solid #2563eb;
-        padding: 15px;
+        padding: 16px;
         border-radius: 8px;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
+        color: #0f172a !important;
     }
+
+    /* Estilo para Títulos dentro dos Cards */
+    .card-lavoura h4, .card-pecuaria h4, .card-infra h4 {
+        color: #0f172a !important;
+        margin-top: 0px;
+        font-weight: 700;
+    }
+
+    /* Texto e listas dentro dos cards */
+    .card-lavoura li, .card-pecuaria li, .card-infra li,
+    .card-lavoura p, .card-pecuaria p, .card-infra p {
+        color: #1e293b !important;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    /* Banner para Emergência de Rio Cheio */
+    .banner-emergencia-rio {
+        background-color: #fff1f2;
+        border: 2px solid #e11d48;
+        padding: 16px;
+        border-radius: 10px;
+        margin-top: 15px;
+        margin-bottom: 20px;
+        color: #881337 !important;
+    }
+    .banner-emergencia-rio h4 {
+        color: #9f1239 !important;
+        margin-top: 0px;
+    }
+    .banner-emergencia-rio li {
+        color: #881337 !important;
+    }
+
+    /* Banner Super El Niño */
     .banner-elnino {
         background: linear-gradient(90deg, #7f1d1d 0%, #991b1b 100%);
-        color: white;
-        padding: 15px;
+        color: #ffffff !important;
+        padding: 18px;
         border-radius: 10px;
         margin-bottom: 20px;
     }
+    .banner-elnino h2, .banner-elnino p {
+        color: #ffffff !important;
+    }
     </style>
-""", unsafe_allow_html=True)
+""", unsafe_unsafe_html=True if hasattr(st, "unsafe_html") else True)
 
 st.title("🌾 AgroVerde RS — Gêmeo Digital & Inteligência Climática")
 st.caption("Secretaria da Agricultura, Pecuária, Produção Sustentável e Irrigação (SEAPI-RS)")
@@ -115,7 +164,7 @@ aba_operacional, aba_sazonal = st.tabs([
 ])
 
 # =========================================================
-# ABA 1: MONITORAMENTO & AÇÕES PRÁTICAS (VISUAL ATRATIVO)
+# ABA 1: MONITORAMENTO & AÇÕES PRÁTICAS (IMEDIATO)
 # =========================================================
 with aba_operacional:
     if dados_16dias and "current" in dados_16dias:
@@ -140,25 +189,38 @@ with aba_operacional:
         max_vento_periodo = max(ventos_max)
 
         # Status Fluvial
-        st.subheader(f"🌊 Status Fluvial & Alertas — {municipio_sel}")
+        st.subheader(f"🌊 Monitoramento do Nível de Rios — {municipio_sel}")
         
         c_rio1, c_rio2, c_rio3 = st.columns(3)
-        status_rio = "🚨 ALERTA DE CHEIA" if chuva_acum_7 > 80 else ("🟡 Atenção / Calha Cheia" if chuva_acum_7 > 30 else "🟢 Nível Normal")
-        cota_rio = "+ 2.80 m (Alto)" if chuva_acum_7 > 80 else ("+ 0.90 m (Normal)" if chuva_acum_7 > 30 else "- 0.45 m (Baixo)")
+        
+        # Lógica de detecção do nível do rio
+        rio_critico = chuva_acum_7 > 50
+        status_rio = "🚨 CALHA CHEIA / RISCO DE INUNDAÇÃO" if rio_critico else ("🟡 Atenção / Calha Elevada" if chuva_acum_7 > 25 else "🟢 Nível Normal")
+        cota_rio = "+ 2.80 m (Alto)" if rio_critico else ("+ 0.90 m (Moderado)" if chuva_acum_7 > 25 else "- 0.45 m (Normal)")
         
         c_rio1.metric("Acumulado 7 Dias", f"{chuva_acum_7:.1f} mm")
-        c_rio2.metric("Tendência Fluvial", status_rio)
+        c_rio2.metric("Status Fluvial", status_rio)
         c_rio3.metric("Cota Fluvial Est.", cota_rio)
 
-        # Alerta Severo
-        if (20 <= chuva_acum_7 <= 60) or (40 <= max_vento_periodo <= 60):
-            st.warning("⚠️ **ALERTA METEOROLÓGICO: PERIGO POTENCIAL DE TEMPESTADE / VENDAVAL** (Inmet / Defesa Civil)")
-            with st.expander("🛡️ **Precauções de Segurança Pessoal (Defesa Civil 199)**"):
-                st.markdown("* Não se abrigue debaixo de árvores | Evite usar eletrodomésticos na tomada | Emergência: 199 / 193.")
+        # 🚨 MÓDULO EMERGENCIAL: AÇÕES EM CASO DE RIO COM CALHA CHEIA
+        if rio_critico:
+            st.markdown("""
+            <div class="banner-emergencia-rio">
+                <h4>🚨 PROTOCOLO DE EMERGÊNCIA: RIO COM CALHA CHEIA / TRANSBORDAMENTO IMINENTE</h4>
+                <p><b>Diretrizes de Ação Imediata para a Propriedade Rural (SEAPI / Defesa Civil):</b></p>
+                <ul>
+                    <li><b>Pecuária:</b> Retirar imediatamente todo o rebanho das áreas de várzea e piquetes ribeirinhos. Deslocar o gado para campos altos de refúgio.</li>
+                    <li><b>Maquinários:</b> Retirar tratores, colheitadeiras e implementos das baixadas e de perto de pontes rurais. Estacionar em locais elevados e firmes.</li>
+                    <li><b>Grãos e Insumos:</b> Elevar sacarias de sementes, rações e adubos em pelo menos 1 metro de altura ou transferir para silos elevados/centrais.</li>
+                    <li><b>Bombas e Irrigação:</b> Desligar e retirar os motores de captação de água das margens do rio antes da chegada do pico da cheia.</li>
+                    <li><b>Segurança Pessoal:</b> Não tentar atravessar pontes submersas ou vados com tratores/veículos. Emergência: Ligar 199 (Defesa Civil).</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # CHECKLIST INTERATIVO E VISUAL PARA O PRODUTOR
+        # CHECKLIST OPERACIONAL DO CAMPO
         st.subheader(f"🚜 Guia Prático de Manejo na Propriedade")
         
         col_op1, col_op2, col_op3 = st.columns(3)
@@ -167,11 +229,11 @@ with aba_operacional:
             st.markdown("""
             <div class="card-lavoura">
                 <h4>🌾 Lavouras & Hortifrúti</h4>
-                <p><b>Diretrizes Recomendadas:</b></p>
+                <p><b>Manejo Imediato:</b></p>
                 <ul>
-                    <li><b>Pulverização:</b> Suspenda com ventos > 10 km/h ou umidade < 50%.</li>
-                    <li><b>Adubação:</b> Não aplique ureia/adubo antes de tempestades.</li>
-                    <li><b>Estufas:</b> Baixe as cortinas laterais contra ventos fortes.</li>
+                    <li><b>Pulverização:</b> Suspender se vento > 10 km/h ou umidade < 50%.</li>
+                    <li><b>Adubação:</b> Não aplicar ureia/adubo antes de tempestades.</li>
+                    <li><b>Drenagem:</b> Desobstruir canais e valas de drenagem nas lavouras.</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
@@ -180,11 +242,11 @@ with aba_operacional:
             st.markdown("""
             <div class="card-pecuaria">
                 <h4>🐄 Pecuária & Leite</h4>
-                <p><b>Diretrizes Recomendadas:</b></p>
+                <p><b>Manejo Imediato:</b></p>
                 <ul>
-                    <li><b>Estresse Térmico:</b> Ligue aspersores 30 min antes da ordenha.</li>
-                    <li><b>Proteção de Raios:</b> Afaste o gado de cercas de arame.</li>
-                    <li><b>Água:</b> Verifique vazão dos bebedouros (demanda +40%).</li>
+                    <li><b>Estresse Térmico:</b> Ligar aspersores 30 min antes da ordenha.</li>
+                    <li><b>Descargas Elétricas:</b> Afastar o gado de cercas de arame nos temporais.</li>
+                    <li><b>Alimentação:</b> Garantir trato coberto antes das chuvas.</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
@@ -193,18 +255,18 @@ with aba_operacional:
             st.markdown("""
             <div class="card-infra">
                 <h4>🚜 Máquinas & Galpões</h4>
-                <p><b>Diretrizes Recomendadas:</b></p>
+                <p><b>Manejo Imediato:</b></p>
                 <ul>
-                    <li><b>Geradores:</b> Teste o gerador para os resfriadores de leite.</li>
-                    <li><b>Insumos:</b> Eleve sacarias de sementes e adubos do chão.</li>
-                    <li><b>Veículos:</b> Retire tratores de perto de árvores antigas.</li>
+                    <li><b>Energia:</b> Testar o gerador para os resfriadores de leite.</li>
+                    <li><b>Insumos:</b> Manter sacarias e produtos químicos sobre pallets elevados.</li>
+                    <li><b>Estruturas:</b> Ancorar lonas e fardos contra rajadas de vento.</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # Mapa e Tabela
+    # Mapa e Tabela Diária
     c_mapa, c_tabela = st.columns([2, 1])
     with c_mapa:
         st.subheader(f"🗺️ Mapa Tático — {municipio_sel}")
@@ -225,10 +287,9 @@ with aba_operacional:
             st.dataframe(df_16, use_container_width=True, height=330, hide_index=True)
 
 # =========================================================
-# ABA 2: TENDÊNCIA SAZONAL & SUPER EL NIÑO (PROJEÇÃO EXTRAORDINÁRIA)
+# ABA 2: TENDÊNCIA SAZONAL & SUPER EL NIÑO
 # =========================================================
 with aba_sazonal:
-    # BANNER DEDICADO A EVENTOS EXTRAORDINÁRIOS (SUPER EL NIÑO)
     st.markdown("""
     <div class="banner-elnino">
         <h2>🌋 ALERTA DE EVENTO CLIMÁTICO EXTRAORDINÁRIO: SUPER EL NIÑO</h2>
@@ -247,11 +308,10 @@ with aba_sazonal:
 
     st.markdown("### 🗓️ Projeção de Impacto do Super El Niño por Período")
     
-    # Tabela com detalhamento extraordinário
     df_sazonal_elnino = pd.DataFrame({
         "Trimestre": ["Set-Out-Nov / 2026", "Dez-Jan-Fev / 2026-27", "Mar-Abr-Mai / 2027"],
         "Projeção de Chuva": ["Muito Acima da Média (+50%)", "Acima da Média (+30%)", "Transição para Normalidade"],
-        "Risco Principal": ["Enxurradas, Granizo e Atraso no Plantio", "Ondas de Calor Umido e Doenças Fúngicas", "Saturação de Solo na Colheita"],
+        "Risco Principal": ["Enxurradas, Granizo e Atraso no Plantio", "Ondas de Calor Úmido e Doenças Fúngicas", "Saturação de Solo na Colheita"],
         "Ação Estratégica SEAPI / Produtor": [
             "Limpeza de canais de drenagem, reforço de pontilhões e seguro rural antecipado.",
             "Monitoramento intensivo de pragas e aplicação de biochar para fixar nutrientes.",
@@ -262,7 +322,6 @@ with aba_sazonal:
 
     st.markdown("---")
     
-    # Pilares de Governo
     with st.expander("💧 **1. Gestão de Bacias & Prevenção de Inundações (Super El Niño)**", expanded=True):
         st.markdown("* Mapeamento de áreas ribeirinhas vulneráveis | Priorização de recursos para contenção de cheias.")
 
